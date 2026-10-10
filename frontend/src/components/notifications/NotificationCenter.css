@@ -1,0 +1,314 @@
+.notification-center {
+  position: relative;
+  z-index: 100;
+}
+
+.notification-trigger {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  color: var(--color-graphite-soft);
+  background: var(--color-white);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.notification-trigger:hover {
+  color: var(--color-blue);
+  border-color: var(--color-blue-light);
+  background: var(--color-ivory-soft);
+  transform: translateY(-1px);
+}
+
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-white);
+  border-radius: 999px;
+  color: var(--color-white);
+  background: var(--color-maroon);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.notification-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 390px;
+  max-width: calc(100vw - 28px);
+  overflow: hidden;
+  border: 1px solid var(--border-medium);
+  border-radius: 15px;
+  background: var(--color-white);
+  box-shadow: var(--shadow-hover);
+  animation: notification-panel-in 180ms ease both;
+}
+
+@keyframes notification-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.notification-panel-header {
+  min-height: 66px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--color-ivory-soft);
+}
+
+.notification-panel-header h3 {
+  margin: 0;
+  color: var(--color-graphite);
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.notification-panel-header span {
+  display: block;
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.notification-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notification-header-actions button {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.notification-header-actions button:hover {
+  color: var(--color-blue);
+  background: var(--color-ivory);
+}
+
+.notification-list {
+  max-height: 390px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  position: relative;
+  width: 100%;
+  min-height: 86px;
+  padding: 13px 14px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+  background: var(--color-white);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.notification-item:hover {
+  background: var(--color-ivory-soft);
+}
+
+.notification-item.is-unread {
+  background: rgba(36, 85, 141, 0.035);
+}
+
+.notification-item-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--color-blue);
+  background: rgba(36, 85, 141, 0.09);
+}
+
+.notification-item-content {
+  min-width: 0;
+}
+
+.notification-item-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.notification-item-top strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-graphite);
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-item-content p {
+  margin: 4px 0 5px;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.notification-time {
+  color: #aaa19a;
+  font-size: 10px;
+}
+
+.notification-unread-dot {
+  width: 6px !important;
+  height: 6px;
+  flex: 0 0 6px;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 50%;
+  background: var(--color-maroon);
+}
+
+.notification-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.notification-item:hover .notification-item-actions {
+  opacity: 1;
+}
+
+.notification-action {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--color-muted);
+}
+
+.notification-action:hover {
+  color: var(--color-blue);
+  background: var(--color-ivory);
+}
+
+.notification-action.delete:hover {
+  color: var(--color-danger);
+}
+
+.notification-empty {
+  min-height: 180px;
+  padding: 30px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.notification-empty svg {
+  margin-bottom: 4px;
+  color: var(--color-blue-light);
+}
+
+.notification-empty strong {
+  color: var(--color-graphite);
+  font-size: 13px;
+}
+
+.notification-empty span {
+  font-size: 11px;
+}
+
+.notification-panel-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-light);
+  background: var(--color-ivory-soft);
+}
+
+.notification-panel-footer button {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-blue);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notification-panel-footer button:hover {
+  background: var(--color-ivory);
+}
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 600px) {
+  .notification-panel {
+    position: fixed;
+    top: 66px;
+    right: 14px;
+    width: min(390px, calc(100vw - 28px));
+  }
+
+  .notification-item-actions {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 380px) {
+  .notification-panel {
+    right: 10px;
+    width: calc(100vw - 20px);
+  }
+
+  .notification-item {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .notification-item-actions {
+    display: none;
+  }
+}

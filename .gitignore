@@ -1,0 +1,104 @@
+# ============================================================
+# SoftPeak Technologies — AI Lead Generation Platform
+# Git Ignore Configuration
+# ============================================================
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+wheels/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml/
+
+# Python type checking and linting
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# Logs
+*.log
+logs/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Node.js and frontend dependencies
+node_modules/
+frontend/node_modules/
+
+# Vite build output
+dist/
+frontend/dist/
+
+# Frontend environment files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.orig
+*.backup
+
+# Uploaded/generated local media
+uploads/
+media/
+tmp/
+temp/
+
+# Deployment credentials and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

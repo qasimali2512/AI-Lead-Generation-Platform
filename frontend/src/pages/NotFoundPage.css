@@ -1,0 +1,63 @@
+.not-found-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--color-ivory);
+}
+
+.not-found-card {
+  width: 100%;
+  max-width: 520px;
+  padding: 52px 42px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  background: var(--color-ivory-soft);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+  animation: scaleIn 400ms ease both;
+}
+
+.not-found-card > span {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--color-maroon);
+  font-family: var(--font-display);
+  font-size: 72px;
+  line-height: 1;
+}
+
+.not-found-card h1 {
+  margin-bottom: 12px;
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 400;
+}
+
+.not-found-card p {
+  margin-bottom: 28px;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.not-found-card button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: var(--radius-md);
+  color: var(--color-white);
+  background: var(--color-maroon);
+  font-size: 13px;
+  font-weight: 700;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.not-found-card button:hover {
+  background: var(--color-maroon-dark);
+  transform: translateY(-2px);
+}
