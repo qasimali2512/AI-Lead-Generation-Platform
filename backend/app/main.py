@@ -1,3 +1,4 @@
+```python
 from __future__ import annotations
 
 import logging
@@ -7,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.config import settings
 from app.routers.campaigns import router as campaigns_router
 from app.routers import settings as settings_router
@@ -39,15 +41,12 @@ from app.routers import (
     website_opportunities,
 )
 
-
 logger = logging.getLogger("ai-lead-api")
 
 
 def _scheduler_loop(stop_event: threading.Event) -> None:
     """
-    Background loop: har SCHEDULER_INTERVAL_SECONDS baad due emails
-    (scheduled/pending) khud send karta hai. Alag command chalane ki
-    zarurat nahi.
+    Background loop: scheduled/pending emails process karta hai.
     """
     from app.workers.scheduler_runner import SchedulerRunner
 
@@ -74,8 +73,6 @@ async def lifespan(app: FastAPI):
     stop_event = threading.Event()
     thread = None
 
-    # .env mein RUN_SCHEDULER=false kar dein to auto scheduler band ho jaye
-    # (jab alag se scheduler_runner chalana ho).
     if os.getenv("RUN_SCHEDULER", "true").strip().lower() not in {
         "0",
         "false",
@@ -109,18 +106,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-# ------------------------------------------------------------------
 # Error handling
-# ------------------------------------------------------------------
-
 register_error_handlers(app)
 
-
-# ------------------------------------------------------------------
 # Security middleware
-# ------------------------------------------------------------------
-
 app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
@@ -134,16 +123,20 @@ app.add_middleware(
     window_seconds=60,
 )
 
-
-# ------------------------------------------------------------------
 # CORS
-# ------------------------------------------------------------------
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=[
+        "GET",
+        "HEAD",
+        "POST",
+        "PATCH",
+        "PUT",
+        "DELETE",
+        "OPTIONS",
+    ],
     allow_headers=[
         "Authorization",
         "Content-Type",
@@ -152,7 +145,6 @@ app.add_middleware(
         "X-Requested-With",
         "Cache-Control",
     ],
-    # SSE ke liye browser ko yeh headers expose karne chahiye
     expose_headers=[
         "Content-Type",
         "Cache-Control",
@@ -160,11 +152,7 @@ app.add_middleware(
     ],
 )
 
-
-# ------------------------------------------------------------------
 # Root
-# ------------------------------------------------------------------
-
 @app.get("/")
 def root():
     return {
@@ -177,110 +165,36 @@ def root():
     }
 
 
-# ------------------------------------------------------------------
 # Routers
-# ------------------------------------------------------------------
-
 app.include_router(
     health.router,
     prefix=settings.api_prefix,
 )
 
-app.include_router(
-    auth.router,
-    prefix=settings.api_prefix,
-)
+app.include_router(auth.router, prefix=settings.api_prefix)
+app.include_router(users.router, prefix=settings.api_prefix)
+app.include_router(discovery.router, prefix=settings.api_prefix)
+app.include_router(leads.router, prefix=settings.api_prefix)
+app.include_router(website.router, prefix=settings.api_prefix)
+app.include_router(scanner.router, prefix=settings.api_prefix)
+app.include_router(issues.router, prefix=settings.api_prefix)
 
-app.include_router(
-    users.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    discovery.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    leads.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    website.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    scanner.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    issues.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    ai_analysis.router,
-    prefix=settings.api_prefix,
-)
-app.include_router(
-    campaigns_router,
-    prefix=settings.api_prefix,
-)
-
+app.include_router(ai_analysis.router, prefix=settings.api_prefix)
+app.include_router(campaigns_router, prefix=settings.api_prefix)
 app.include_router(
     website_opportunities.router,
     prefix=settings.api_prefix,
 )
-app.include_router(
-    settings_router.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    qualification.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    email_accounts.router,
-    prefix=settings.api_prefix,
-)
-app.include_router(
-    notifications.router,
-    prefix=settings.api_prefix,
-)
-app.include_router(
-    ai_email.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    email_queue.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    email_delivery.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    follow_up.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    replies.router,
-    prefix=settings.api_prefix,
-)
-
-app.include_router(
-    analytics.router,
-    prefix=settings.api_prefix,
-)
+app.include_router(settings_router.router, prefix=settings.api_prefix)
+app.include_router(qualification.router, prefix=settings.api_prefix)
+app.include_router(email_accounts.router, prefix=settings.api_prefix)
+app.include_router(notifications.router, prefix=settings.api_prefix)
+app.include_router(ai_email.router, prefix=settings.api_prefix)
+app.include_router(email_queue.router, prefix=settings.api_prefix)
+app.include_router(email_delivery.router, prefix=settings.api_prefix)
+app.include_router(follow_up.router, prefix=settings.api_prefix)
+app.include_router(replies.router, prefix=settings.api_prefix)
+app.include_router(analytics.router, prefix=settings.api_prefix)
 
 # api_info already contains /api prefix.
 app.include_router(api_info.router)
