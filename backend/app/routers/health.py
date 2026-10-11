@@ -13,7 +13,11 @@ router = APIRouter(
 )
 
 
-@router.get("")
+@router.api_route(
+    "",
+    methods=["GET", "HEAD"],
+    summary="Health Check",
+)
 def health_check():
     """Check API and database health."""
 
@@ -41,4 +45,3 @@ def health_check():
             "database": database_status,
         },
     }
-
