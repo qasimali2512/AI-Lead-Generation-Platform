@@ -14,6 +14,7 @@ import {
   Settings,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -36,6 +37,12 @@ const mainNavigation = [
     icon: FileSearch,
     end: true,
   },
+  {
+  label: "Auto Discovery",
+  path: "/leads/auto",
+  icon: Zap,
+  end: true,
+},
   {
     label: "Leads",
     path: "/leads",

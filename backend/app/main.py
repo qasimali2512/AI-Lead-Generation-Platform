@@ -24,6 +24,7 @@ from app.routers import (
     analytics,
     api_info,
     auth,
+    auto_discovery,
     discovery,
     email_accounts,
     email_delivery,
@@ -72,6 +73,7 @@ def _scheduler_loop(stop_event: threading.Event) -> None:
 async def lifespan(app: FastAPI):
     stop_event = threading.Event()
     thread = None
+    discovery_thread = None
 
     if os.getenv("RUN_SCHEDULER", "true").strip().lower() not in {
         "0",
@@ -87,6 +89,16 @@ async def lifespan(app: FastAPI):
         )
         thread.start()
 
+        from app.workers.auto_discovery_runner import auto_discovery_loop
+
+        discovery_thread = threading.Thread(
+            target=auto_discovery_loop,
+            args=(stop_event,),
+            name="auto-discovery",
+            daemon=True,
+        )
+        discovery_thread.start()
+
     try:
         yield
     finally:
@@ -94,6 +106,9 @@ async def lifespan(app: FastAPI):
 
         if thread:
             thread.join(timeout=5)
+
+        if discovery_thread:
+            discovery_thread.join(timeout=5)
 
 
 app = FastAPI(
@@ -174,6 +189,7 @@ app.include_router(
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
 app.include_router(discovery.router, prefix=settings.api_prefix)
+app.include_router(auto_discovery.router, prefix=settings.api_prefix)
 app.include_router(leads.router, prefix=settings.api_prefix)
 app.include_router(website.router, prefix=settings.api_prefix)
 app.include_router(scanner.router, prefix=settings.api_prefix)

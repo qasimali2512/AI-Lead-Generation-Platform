@@ -1,0 +1,191 @@
+/* Auto-discovery page — LeadDiscoveryPage.css ke classes ke saath chalta hai */
+
+.auto-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.6fr) minmax(200px, 1fr) minmax(200px, 1fr) minmax(200px, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.auto-countries {
+  margin-bottom: 20px;
+}
+
+.auto-hint {
+  font-weight: 500;
+  color: var(--color-graphite-soft);
+}
+
+.auto-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.auto-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border-medium);
+  border-radius: 999px;
+  color: var(--color-graphite-soft);
+  background: var(--color-ivory-deep);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.auto-chip:hover {
+  color: var(--color-maroon);
+}
+
+.auto-chip.selected {
+  color: var(--color-white);
+  background: var(--color-maroon);
+  border-color: var(--color-maroon);
+}
+
+.auto-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.auto-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  color: var(--color-graphite);
+  background: var(--color-ivory-deep);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.auto-secondary:hover:not(:disabled) {
+  color: var(--color-maroon);
+  background: var(--color-ivory-soft);
+}
+
+.auto-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auto-stop {
+  background: var(--color-graphite);
+}
+
+.auto-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.auto-status-pill.on {
+  color: #1d6b3a;
+  background: #e3f3e8;
+}
+
+.auto-status-pill.off {
+  color: var(--color-graphite-soft);
+  background: var(--color-ivory-deep);
+}
+
+.auto-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.auto-status-pill.on .auto-status-dot {
+  animation: autoPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes autoPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.auto-status-panel {
+  margin-top: 22px;
+}
+
+.auto-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.auto-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--color-ivory-deep);
+}
+
+.auto-stat span {
+  color: var(--color-graphite-soft);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.auto-stat strong {
+  color: var(--color-graphite);
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.auto-stat small {
+  color: var(--color-graphite-soft);
+  font-size: 11px;
+}
+
+.auto-error {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: #8a2a2a;
+  background: #f9e5e5;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .auto-form,
+  .auto-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .auto-form,
+  .auto-stats {
+    grid-template-columns: 1fr;
+  }
+}
