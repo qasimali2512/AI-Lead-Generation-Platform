@@ -189,3 +189,33 @@
     grid-template-columns: 1fr;
   }
 }
+/* ---- v2: city size + country picker ---- */
+
+.auto-size-hint {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.auto-country-select {
+  width: 100%;
+  max-width: 420px;
+  height: 44px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  color: var(--color-graphite);
+  background: var(--color-ivory-deep);
+  font: inherit;
+  font-size: 13px;
+}
+
+.auto-country-select:disabled {
+  opacity: 0.6;
+}
+
+.auto-chip svg {
+  opacity: 0.8;
+}

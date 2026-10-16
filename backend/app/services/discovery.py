@@ -1156,16 +1156,25 @@ def build_overpass_query(
     max_elements: int = 2000,
     include_tag_search: bool = True,
     include_keyword_search: bool = True,
+    area_id: int | None = None,
+    timeout: int = 25,
 ) -> str:
+    """
+    area_id diya ho to poori city/boundary mein search hoti hai (radius ignore).
+    Warna latitude/longitude ke aas-paas `radius` meter ka circle.
+    """
     tags = get_industry_tags(industry)
     search_terms = get_industry_search_terms(industry)
+
+    # (around:...) ya (area.a) -- baqi statements dono ke liye same hain
+    scope = "(area.a)" if area_id else f"(around:{radius},{latitude},{longitude})"
 
     statements: list[str] = []
     if include_tag_search:
         for tag in dict.fromkeys(tags):
             for osm_type in ("node", "way", "relation"):
                 statements.append(
-                    f'{osm_type}(around:{radius},{latitude},{longitude}){tag};'
+                    f'{osm_type}{scope}{tag};'
                 )
 
     # Tag mappings cover common sectors, while this keyword search covers any
@@ -1176,22 +1185,30 @@ def build_overpass_query(
         escaped_term = escape_overpass_regex(term)
         for osm_type in ("node", "way", "relation"):
             statements.append(
-                f'{osm_type}(around:{radius},{latitude},{longitude})'
+                f'{osm_type}{scope}'
                 f'["name"~"{escaped_term}",i];'
             )
             statements.append(
-                f'{osm_type}(around:{radius},{latitude},{longitude})'
+                f'{osm_type}{scope}'
                 f'["industrial"~"{escaped_term}",i]["name"];'
             )
             statements.append(
-                f'{osm_type}(around:{radius},{latitude},{longitude})'
+                f'{osm_type}{scope}'
                 f'["product"~"{escaped_term}",i]["name"];'
             )
 
     joined = "\n".join(statements)
 
+    if area_id:
+        return (
+            f"[out:json][timeout:{timeout}][maxsize:128000000];\n"
+            f"area(id:{area_id})->.a;\n"
+            f"(\n{joined}\n);\n"
+            f"out center tags {max_elements};\n"
+        )
+
     return (
-        f"[out:json][timeout:25][maxsize:32000000];\n"
+        f"[out:json][timeout:{timeout}][maxsize:32000000];\n"
         f"(\n{joined}\n);\n"
         f"out center tags {max_elements};\n"
     )
@@ -1348,91 +1365,80 @@ async def discover_businesses(
     db: Session,
     user_id: UUID,
 ) -> BusinessDiscoveryResponse:
+    # city_search is imported here to avoid a circular import
+    # (city_search itself uses helpers from this module).
+    from app.services.city_search import (
+        LocationNotFound,
+        TransientSearchError,
+        fetch_city_elements,
+        filter_already_saved,
+        find_city_area,
+        normalize_elements,
+        score_business,
+    )
 
     normalized_industry = normalize_industry(payload.industry)
 
-    # Step 1: Geocode
-    location = await geocode_city(
-        country=payload.country,
-        state=payload.state,
-        city=payload.city,
-    )
+    # Step 1: Poori city ki boundary dhoondo (radius nahi).
+    # Boundary na mile to 30 km ka circle fallback use hota hai.
+    queries: list[str] = []
+    if payload.state:
+        queries.append(f"{payload.city}, {payload.state}, {payload.country}")
+    queries.append(f"{payload.city}, {payload.country}")
+    queries.append(payload.city)
 
-    # Step 2: Build Overpass query
-    # A qualified-only search has to inspect more candidates before applying
-    # its limit.  In particular, an email-only search must never stop after
-    # the first N businesses and then return a mostly unqualified list.
+    try:
+        location = await find_city_area(queries)
+    except LocationNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Location not found: {payload.city}"
+                + (f", {payload.state}" if payload.state else "")
+                + f", {payload.country}. "
+                "Check spelling or try a larger nearby city."
+            ),
+        ) from exc
+    except TransientSearchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Location service is temporarily unavailable.",
+        ) from exc
+
+    # Step 2: Businesses nikalo.
+    # Pehle se saved leads hataane ke baad bhi limit poori ho, is liye
+    # zyada raw records mangwate hain.
     qualification_multiplier = 10 if "has_email" in payload.filters else 4
-    raw_limit = min(payload.limit * qualification_multiplier, 5000)
-    mapped_tags = get_industry_tags(normalized_industry)
-    elements: list[Any] = []
+    raw_limit = min(max(payload.limit * qualification_multiplier, 1500), 5000)
 
-    # Start with precise industry tags. This keeps large-city searches fast.
-    if mapped_tags:
-        query = build_overpass_query(
-            latitude=location["latitude"],
-            longitude=location["longitude"],
-            industry=normalized_industry,
-            radius=15000,
+    try:
+        elements = await fetch_city_elements(
+            normalized_industry,
+            location,
             max_elements=raw_limit,
-            include_keyword_search=False,
         )
-        data = await fetch_overpass_data(query)
-        response_elements = data.get("elements") or []
-        if isinstance(response_elements, list):
-            elements = response_elements
+    except TransientSearchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "Business discovery services are temporarily unavailable. "
+                "Please try again in a moment."
+            ),
+        ) from exc
 
-    # There is no universal OSM tag for every business type. If the precise
-    # search has no named result, retry using the typed industry as a keyword.
-    has_named_business = any(
-        isinstance(element, dict)
-        and clean_value((element.get("tags") or {}).get("name"))
-        for element in elements
+    # Step 3: Normalize + duplicate hatao
+    businesses = normalize_elements(
+        elements,
+        normalized_industry,
+        city=payload.city,
+        state=payload.state,
+        country=payload.country,
     )
-    if not has_named_business:
-        query = build_overpass_query(
-            latitude=location["latitude"],
-            longitude=location["longitude"],
-            industry=normalized_industry,
-            radius=10000,
-            max_elements=raw_limit,
-            include_tag_search=False,
-        )
-        data = await fetch_overpass_data(query)
-        response_elements = data.get("elements") or []
-        elements = response_elements if isinstance(response_elements, list) else []
-
-    # Step 4: Normalize + deduplicate
-    businesses: list[BusinessDiscoveryResult] = []
-    seen_ids:   set[str] = set()
-    seen_names: set[str] = set()
-
-    for element in elements:
-        if not isinstance(element, dict):
-            continue
-
-        business = normalize_business(
-            element=element,
-            industry=normalized_industry,
-        )
-        if business is None:
-            continue
-
-        if business.source_id in seen_ids:
-            continue
-
-        dedup_key = (
-            f"{business.name.lower().strip()}|"
-            f"{(business.address or '').lower()}"
-        )
-        if dedup_key in seen_names:
-            continue
-
-        seen_ids.add(business.source_id)
-        seen_names.add(dedup_key)
-        businesses.append(business)
 
     candidates_scanned = len(businesses)
+
+    # Step 4: Jo leads pehle se saved hain unhein limit lagne se PEHLE hatao
+    businesses, already_saved = filter_already_saved(db, user_id, businesses)
 
     if "has_website" in payload.filters:
         businesses = [business for business in businesses if business.website]
@@ -1440,11 +1446,8 @@ async def discover_businesses(
     if "has_email" in payload.filters:
         businesses = [business for business in businesses if business.email]
 
-    # Step 5: Sort — email first, then phone, then rest
-    # (most contactable leads surface at the top)
-    businesses.sort(
-        key=lambda b: (0 if b.email else 1 if b.phone else 2)
-    )
+    # Step 5: Sort -- sab se achi (email, phone, website na ho) pehle
+    businesses.sort(key=score_business, reverse=True)
     businesses = businesses[:payload.limit]
 
     # Step 6: Save
@@ -1462,12 +1465,14 @@ async def discover_businesses(
             "requested_country": payload.country,
             "requested_state":   payload.state,
             "requested_city":    payload.city,
-            "resolved_name":     location["display_name"],
+            "resolved_name":     location.get("display_name"),
             "latitude":          location["latitude"],
             "longitude":         location["longitude"],
+            "search_area":       "city_boundary" if location.get("area_id") else "30km_radius",
         },
         industry=normalized_industry,
         businesses=businesses,
         candidates_scanned=candidates_scanned,
         filters_applied=sorted(payload.filters),
+        already_saved_skipped=already_saved,
     )

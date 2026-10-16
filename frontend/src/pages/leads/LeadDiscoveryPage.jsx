@@ -115,6 +115,7 @@ function LeadDiscoveryPage() {
   const [results, setResults] = useState([]);
   const [searchMeta, setSearchMeta] = useState({
     candidatesScanned: 0,
+    alreadySaved: 0,
     filters: [],
   });
   const [selectedIds, setSelectedIds] = useState([]);
@@ -185,6 +186,7 @@ function LeadDiscoveryPage() {
       setResults(discoveredBusinesses);
       setSearchMeta({
         candidatesScanned: Number(data?.candidates_scanned) || 0,
+        alreadySaved: Number(data?.already_saved_skipped) || 0,
         filters: Array.isArray(data?.filters_applied)
           ? data.filters_applied
           : [],
@@ -192,7 +194,9 @@ function LeadDiscoveryPage() {
 
       if (discoveredBusinesses.length === 0) {
         toast.info(
-          "No businesses were found for this search.",
+          Number(data?.already_saved_skipped) > 0
+            ? `No new businesses: ${Number(data.already_saved_skipped)} found were already in your leads.`
+            : "No businesses were found for this search.",
         );
       } else {
         toast.success(
@@ -530,6 +534,9 @@ function LeadDiscoveryPage() {
                     {searchMeta.filters.length > 0
                       ? ` (${searchMeta.filters.map((filter) => filter === "has_email" ? "email required" : "website required").join(", ")})`
                       : ""}.
+                    {searchMeta.alreadySaved > 0
+                      ? ` ${searchMeta.alreadySaved} businesses were skipped because they are already in your leads.`
+                      : ""}
                   </p>
                 )}
               </div>
@@ -593,8 +600,9 @@ function LeadDiscoveryPage() {
                 </h3>
 
                 <p>
-                  Try a different city, industry, or
-                  search area to discover more businesses.
+                  {searchMeta.alreadySaved > 0
+                    ? `${searchMeta.alreadySaved} businesses matched but are already in your leads. Try a different city or industry.`
+                    : "Try a different city, industry, or search area to discover more businesses."}
                 </p>
               </div>
             ) : (

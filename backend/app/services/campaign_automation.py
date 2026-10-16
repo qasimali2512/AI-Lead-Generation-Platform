@@ -481,6 +481,7 @@ async def process_campaign(
 
     if (
         campaign
+        and campaign.status == "active"  # don't complete if paused/cancelled mid-run
         and remaining is None
         and failed == 0
         and skipped == 0

@@ -1,6 +1,6 @@
 from app.models.ai_analysis import AIAnalysis
 from app.models.ai_email_draft import AIEmailDraft
-from app.models.auto_discovery import AutoDiscoverySettings
+from app.models.auto_discovery import AutoDiscoverySettings, AutoDiscoveryVisitedCity
 from app.models.brand_settings import BrandSettings
 from app.models.campaign import Campaign, CampaignLead
 from app.models.email_account import EmailAccount
@@ -24,6 +24,7 @@ __all__ = [
     "AIAnalysis",
     "AIEmailDraft",
     "AutoDiscoverySettings",
+    "AutoDiscoveryVisitedCity",
     "BrandSettings",
     "Campaign",
     "CampaignLead",

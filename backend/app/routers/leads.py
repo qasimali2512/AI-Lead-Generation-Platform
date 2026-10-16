@@ -26,7 +26,7 @@ router = APIRouter(
 
 
 # ---------------------------------------------------------
-# List leads
+# List leads  — all filters handled server-side
 # ---------------------------------------------------------
 
 @router.get(
@@ -34,27 +34,43 @@ router = APIRouter(
     response_model=LeadListResponse,
 )
 def list_leads(
-    page: int = Query(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    # Date range
+    days: int | None = Query(
         default=1,
         ge=1,
+        description="Leads created within last N days. Pass nothing for all time.",
     ),
-    page_size: int = Query(
-        default=25,
-        ge=1,
-        le=100,
-    ),
-    industry: str | None = Query(
+    # Text search
+    search: str | None = Query(
         default=None,
+        description="Search across name, city, industry, email.",
     ),
-    city: str | None = Query(
+    # Presence filters
+    has_website: str | None = Query(
         default=None,
+        description="'yes' or 'no'",
     ),
-    website_status: str | None = Query(
+    has_email: str | None = Query(
         default=None,
+        description="'yes' or 'no'",
     ),
-    lead_status: str | None = Query(
+    # Qualification
+    qualification: str | None = Query(
         default=None,
+        description="'qualified', 'unqualified', or 'ready'",
     ),
+    # Sort
+    sort_by: str = Query(
+        default="date",
+        description="'date', 'name', or 'industry'",
+    ),
+    # Legacy filters kept for compatibility
+    industry: str | None = Query(default=None),
+    city: str | None = Query(default=None),
+    website_status: str | None = Query(default=None),
+    lead_status: str | None = Query(default=None),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -65,6 +81,12 @@ def list_leads(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        days=days,
+        search=search,
+        has_website=has_website,
+        has_email=has_email,
+        qualification=qualification,
+        sort_by=sort_by,
         industry=industry,
         city=city,
         website_status=website_status,

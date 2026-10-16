@@ -49,3 +49,4 @@ class BusinessDiscoveryResponse(BaseModel):
     businesses: list[BusinessDiscoveryResult]
     candidates_scanned: int = 0
     filters_applied: list[str] = Field(default_factory=list)
+    already_saved_skipped: int = 0

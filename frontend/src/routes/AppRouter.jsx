@@ -1,5 +1,5 @@
 
-import { useContext, useState } from "react";
+import { lazy, Suspense, useContext, useState } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -12,25 +12,62 @@ import { Menu } from "lucide-react";
 import { AuthContext } from "../context/AuthContext";
 import Sidebar from "../components/layout/Sidebar";
 
-import LoginPage from "../pages/auth/LoginPage";
-import RegisterPage from "../pages/auth/RegisterPage";
-import DashboardPage from "../pages/dashboard/DashboardPage";
-import LeadDiscoveryPage from "../pages/leads/LeadDiscoveryPage";
-import AutoDiscoveryPage from "../pages/leads/AutoDiscoveryPage";
-import LeadsPage from "../pages/leads/LeadsPage";
-import WebsiteScannerPage from "../pages/websites/WebsiteScannerPage";
-import OpportunitiesPage from "../pages/opportunities/OpportunitiesPage";
-import AIEmailEditorPage from "../pages/email/AIEmailEditorPage";
-import EmailAccountsPage from "../pages/email/EmailAccountsPage";
-import CampaignsListPage from "../pages/campaigns/CampaignsListPage";
-import CampaignBuilderPage from "../pages/campaigns/CampaignBuilderPage";
-import CampaignDetailPage from "../pages/campaigns/CampaignDetailPage";
-import QueueMonitorPage from "../pages/queue/QueueMonitorPage";
-import DeliveryMonitorPage from "../pages/delivery/DeliveryMonitorPage";
-import RepliesInboxPage from "../pages/replies/RepliesInboxPage";
-import AnalyticsPage from "../pages/analytics/AnalyticsPage";
-import SettingsPage from "../pages/settings/SettingsPage";
-import NotFoundPage from "../pages/NotFoundPage";
+// Lazy-loaded pages — each page becomes its own JS chunk.
+// Only the current page is downloaded on first visit.
+const LoginPage           = lazy(() => import("../pages/auth/LoginPage"));
+const RegisterPage        = lazy(() => import("../pages/auth/RegisterPage"));
+const DashboardPage       = lazy(() => import("../pages/dashboard/DashboardPage"));
+const LeadDiscoveryPage   = lazy(() => import("../pages/leads/LeadDiscoveryPage"));
+const AutoDiscoveryPage   = lazy(() => import("../pages/leads/AutoDiscoveryPage"));
+const LeadsPage           = lazy(() => import("../pages/leads/LeadsPage"));
+const WebsiteScannerPage  = lazy(() => import("../pages/websites/WebsiteScannerPage"));
+const OpportunitiesPage   = lazy(() => import("../pages/opportunities/OpportunitiesPage"));
+const AIEmailEditorPage   = lazy(() => import("../pages/email/AIEmailEditorPage"));
+const EmailAccountsPage   = lazy(() => import("../pages/email/EmailAccountsPage"));
+const CampaignsListPage   = lazy(() => import("../pages/campaigns/CampaignsListPage"));
+const CampaignBuilderPage = lazy(() => import("../pages/campaigns/CampaignBuilderPage"));
+const CampaignDetailPage  = lazy(() => import("../pages/campaigns/CampaignDetailPage"));
+const QueueMonitorPage    = lazy(() => import("../pages/queue/QueueMonitorPage"));
+const DeliveryMonitorPage = lazy(() => import("../pages/delivery/DeliveryMonitorPage"));
+const RepliesInboxPage    = lazy(() => import("../pages/replies/RepliesInboxPage"));
+const AnalyticsPage       = lazy(() => import("../pages/analytics/AnalyticsPage"));
+const SettingsPage        = lazy(() => import("../pages/settings/SettingsPage"));
+const NotFoundPage        = lazy(() => import("../pages/NotFoundPage"));
+
+// Shown while any lazy page chunk is downloading
+function PageLoader() {
+  return (
+    <div className="router-loading">
+      <div className="router-spinner" />
+      <p>Loading...</p>
+
+      <style>{`
+        .router-loading {
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          color: #29394a;
+          background: #f7f5ef;
+          font-family: Inter, Arial, sans-serif;
+        }
+        .router-spinner {
+          width: 32px;
+          height: 32px;
+          border: 3px solid #e5e0d8;
+          border-top-color: #7f3035;
+          border-radius: 50%;
+          animation: router-spin .8s linear infinite;
+        }
+        @keyframes router-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
 
 function ProtectedRoute() {
   const { user, loading, isAuthenticated } =
@@ -175,90 +212,92 @@ function AppRouter() {
   const { isAuthenticated } = useContext(AuthContext);
 
   return (
-    <Routes>
-      <Route element={<PublicRoute />}>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-      </Route>
-
-      <Route element={<ProtectedRoute />}>
-        <Route element={<AppLayout />}>
-          <Route
-            path="/"
-            element={
-              <Navigate
-                to={isAuthenticated ? "/dashboard" : "/login"}
-                replace
-              />
-            }
-          />
-
-          <Route path="/dashboard" element={<DashboardPage />} />
-
-          <Route
-            path="/leads/discover"
-            element={<LeadDiscoveryPage />}
-          />
-          <Route
-            path="/leads/auto"
-            element={<AutoDiscoveryPage />}
-          />
-          <Route path="/leads" element={<LeadsPage />} />
-
-          <Route
-            path="/websites/scanner"
-            element={<WebsiteScannerPage />}
-          />
-          <Route
-            path="/opportunities"
-            element={<OpportunitiesPage />}
-          />
-
-          <Route
-            path="/email/editor"
-            element={<AIEmailEditorPage />}
-          />
-          <Route
-            path="/email/accounts"
-            element={<EmailAccountsPage />}
-          />
-
-          <Route
-            path="/campaigns"
-            element={<CampaignsListPage />}
-          />
-          <Route
-            path="/campaigns/new"
-            element={<CampaignBuilderPage />}
-          />
-          <Route
-            path="/campaigns/:campaignId"
-            element={<CampaignDetailPage />}
-          />
-          <Route
-            path="/campaigns/:campaignId/edit"
-            element={<CampaignBuilderPage />}
-          />
-
-          <Route path="/queue" element={<QueueMonitorPage />} />
-          <Route
-            path="/delivery"
-            element={<DeliveryMonitorPage />}
-          />
-          <Route
-            path="/replies"
-            element={<RepliesInboxPage />}
-          />
-          <Route
-            path="/analytics"
-            element={<AnalyticsPage />}
-          />
-          <Route path="/settings" element={<SettingsPage />} />
-
-          <Route path="*" element={<NotFoundPage />} />
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route element={<PublicRoute />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
         </Route>
-      </Route>
-    </Routes>
+
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AppLayout />}>
+            <Route
+              path="/"
+              element={
+                <Navigate
+                  to={isAuthenticated ? "/dashboard" : "/login"}
+                  replace
+                />
+              }
+            />
+
+            <Route path="/dashboard" element={<DashboardPage />} />
+
+            <Route
+              path="/leads/discover"
+              element={<LeadDiscoveryPage />}
+            />
+            <Route
+              path="/leads/auto"
+              element={<AutoDiscoveryPage />}
+            />
+            <Route path="/leads" element={<LeadsPage />} />
+
+            <Route
+              path="/websites/scanner"
+              element={<WebsiteScannerPage />}
+            />
+            <Route
+              path="/opportunities"
+              element={<OpportunitiesPage />}
+            />
+
+            <Route
+              path="/email/editor"
+              element={<AIEmailEditorPage />}
+            />
+            <Route
+              path="/email/accounts"
+              element={<EmailAccountsPage />}
+            />
+
+            <Route
+              path="/campaigns"
+              element={<CampaignsListPage />}
+            />
+            <Route
+              path="/campaigns/new"
+              element={<CampaignBuilderPage />}
+            />
+            <Route
+              path="/campaigns/:campaignId"
+              element={<CampaignDetailPage />}
+            />
+            <Route
+              path="/campaigns/:campaignId/edit"
+              element={<CampaignBuilderPage />}
+            />
+
+            <Route path="/queue" element={<QueueMonitorPage />} />
+            <Route
+              path="/delivery"
+              element={<DeliveryMonitorPage />}
+            />
+            <Route
+              path="/replies"
+              element={<RepliesInboxPage />}
+            />
+            <Route
+              path="/analytics"
+              element={<AnalyticsPage />}
+            />
+            <Route path="/settings" element={<SettingsPage />} />
+
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+        </Route>
+      </Routes>
+    </Suspense>
   );
 }
 

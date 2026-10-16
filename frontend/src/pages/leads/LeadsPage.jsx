@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,1451 +20,528 @@ import leadsService from "../../services/leadsService";
 import "./LeadsPage.css";
 
 
-function normalizeLeads(data) {
-  if (Array.isArray(data)) {
-    return data;
-  }
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-  if (Array.isArray(data?.leads)) {
-    return data.leads;
-  }
-
-  if (Array.isArray(data?.results)) {
-    return data.results;
-  }
-
-  if (Array.isArray(data?.data)) {
-    return data.data;
-  }
-
-  return [];
-}
-
-
-function getLeadId(lead) {
-  return lead?.id || null;
-}
-
-
-function getLeadName(lead) {
-  return (
-    lead.business_name ||
-    lead.name ||
-    lead.company_name ||
-    "Unnamed business"
-  );
-}
-
-
-function getIndustry(lead) {
-  return (
-    lead.industry ||
-    lead.category ||
-    lead.business_type ||
-    lead.type ||
-    "Business"
-  );
-}
-
-
-function getLocation(lead) {
-  return (
-    lead.location ||
-    lead.address ||
-    lead.city ||
-    lead.display_name ||
-    "Location unavailable"
-  );
-}
-
-
-function getWebsite(lead) {
-  return (
-    lead.website ||
-    lead.website_url ||
-    lead.url ||
-    null
-  );
-}
-
-
-function getEmail(lead) {
-  return (
-    lead.email ||
-    lead.email_address ||
-    null
-  );
-}
-
-
-function getPhone(lead) {
-  return (
-    lead.phone ||
-    lead.phone_number ||
-    null
-  );
-}
-
+function getLeadId(lead)       { return lead?.id || null; }
+function getLeadName(lead)     { return lead.business_name || lead.name || lead.company_name || "Unnamed business"; }
+function getIndustry(lead)     { return lead.industry || lead.category || lead.business_type || lead.type || "Business"; }
+function getLocation(lead)     { return lead.location || lead.address || lead.city || lead.display_name || "Location unavailable"; }
+function getWebsite(lead)      { return lead.website || lead.website_url || lead.url || null; }
+function getEmail(lead)        { return lead.email || lead.email_address || null; }
+function getPhone(lead)        { return lead.phone || lead.phone_number || null; }
 
 function getQualification(lead) {
-  const qualification =
-    lead.qualification_level ||
-    lead.qualification ||
-    lead.qualification_status;
-
-  if (!qualification) {
-    return "Not qualified";
-  }
-
-  return String(qualification);
+  const q = lead.qualification_level || lead.qualification || lead.qualification_status;
+  return q ? String(q) : "Not qualified";
 }
 
-
 function getQualificationClass(lead) {
-  const value = getQualification(lead)
-    .toLowerCase()
-    .replaceAll("_", " ");
-
-  if (
-    value.includes("qualified") &&
-    !value.includes("unqualified")
-  ) {
-    return "qualified";
-  }
-
-  if (
-    value.includes("high") ||
-    value.includes("ready")
-  ) {
-    return "high";
-  }
-
-  if (
-    value.includes("low") ||
-    value.includes("not")
-  ) {
-    return "low";
-  }
-
+  const v = getQualification(lead).toLowerCase().replaceAll("_", " ");
+  if (v.includes("qualified") && !v.includes("unqualified")) return "qualified";
+  if (v.includes("high") || v.includes("ready")) return "high";
+  if (v.includes("low") || v.includes("not")) return "low";
   return "neutral";
 }
 
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
-function LeadsPage() {
+const PAGE_SIZE = 25;
+
+export default function LeadsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // ------------------------------------------------------------------
+  // Server-side filter state
+  // ------------------------------------------------------------------
+  const [search,            setSearch]            = useState(() => searchParams.get("search") || "");
+  const [searchInput,       setSearchInput]       = useState(() => searchParams.get("search") || "");
+  const [websiteFilter,     setWebsiteFilter]     = useState("all");
+  const [emailFilter,       setEmailFilter]       = useState("all");
+  const [qualificationFilter, setQualificationFilter] = useState("all");
+  const [dateFilter,        setDateFilter]        = useState("1");
+  const [sortBy,            setSortBy]            = useState("date");
 
-  // Pre-fill search from URL ?search= param (used by Opportunities "Open lead")
-  const [search, setSearch] = useState(
-    () => searchParams.get("search") || ""
-  );
-  const [websiteFilter, setWebsiteFilter] =
-    useState("all");
-  const [emailFilter, setEmailFilter] =
-    useState("all");
-  const [qualificationFilter, setQualificationFilter] =
-    useState("all");
+  // ------------------------------------------------------------------
+  // Pagination from server
+  // ------------------------------------------------------------------
+  const [page,      setPage]      = useState(1);
+  const [total,     setTotal]     = useState(0);
+  const [leads,     setLeads]     = useState([]);
+  const [loading,   setLoading]   = useState(true);
 
+  // Selection (persists across pages)
   const [selectedIds, setSelectedIds] = useState([]);
-  const [sortBy, setSortBy] = useState("date");
 
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  // Debounce search input
+  const debounceRef = useRef(null);
+  const handleSearchInput = (value) => {
+    setSearchInput(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearch(value);
+      setPage(1);
+    }, 400);
+  };
 
-
-  useEffect(() => {
-    loadLeads();
-  }, []);
-
-
-  const loadLeads = async () => {
+  // ------------------------------------------------------------------
+  // Fetch — single API call, 25 leads, all filters on DB side
+  // ------------------------------------------------------------------
+  const fetchLeads = useCallback(async () => {
     setLoading(true);
-
     try {
-      // Fetch all leads across all pages (max 100 per request)
-      const PAGE_SIZE = 100;
-      let allLeads = [];
-      let currentFetchPage = 1;
-      let total = null;
+      const params = {
+        page,
+        page_size: PAGE_SIZE,
+        sort_by:   sortBy,
+      };
 
-      do {
-        const data = await leadsService.getLeads({
-          page: currentFetchPage,
-          page_size: PAGE_SIZE,
-        });
+      // Date
+      if (dateFilter !== "all") params.days = Number(dateFilter);
 
-        const pageLeads = normalizeLeads(data);
-        allLeads = [...allLeads, ...pageLeads];
+      // Search
+      if (search.trim()) params.search = search.trim();
 
-        if (total === null) {
-          total = data?.total ?? pageLeads.length;
-        }
+      // Website
+      if (websiteFilter === "with")    params.has_website = "yes";
+      if (websiteFilter === "without") params.has_website = "no";
 
-        if (pageLeads.length < PAGE_SIZE) break;
-        currentFetchPage += 1;
-      } while (allLeads.length < total);
+      // Email
+      if (emailFilter === "with")    params.has_email = "yes";
+      if (emailFilter === "without") params.has_email = "no";
 
-      setLeads(allLeads);
-    } catch (error) {
-      console.error(
-        "Unable to load leads:",
-        error,
-      );
+      // Qualification
+      if (qualificationFilter !== "all") params.qualification = qualificationFilter;
 
-      const detail =
-        error?.response?.data?.detail;
+      const data = await leadsService.getLeads(params);
 
-      if (
-        error?.response?.status === 404
-      ) {
-        setLeads([]);
-        return;
-      }
+      const pageLeads = Array.isArray(data?.leads)   ? data.leads
+                      : Array.isArray(data?.results)  ? data.results
+                      : Array.isArray(data)            ? data
+                      : [];
 
-      toast.error(
-        typeof detail === "string"
-          ? detail
-          : "Unable to load leads right now.",
-      );
+      setLeads(pageLeads);
+      setTotal(data?.total ?? pageLeads.length);
+    } catch (err) {
+      if (err?.response?.status === 404) { setLeads([]); setTotal(0); return; }
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Unable to load leads right now.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, sortBy, dateFilter, search, websiteFilter, emailFilter, qualificationFilter]);
 
+  useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
-  const filteredLeads = useMemo(() => {
-    const normalizedSearch =
-      search.trim().toLowerCase();
+  // ------------------------------------------------------------------
+  // Derived
+  // ------------------------------------------------------------------
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-    let filtered = [...leads];
-
-
-    if (normalizedSearch) {
-      filtered = filtered.filter((lead) => {
-        const searchableText = [
-          getLeadName(lead),
-          getIndustry(lead),
-          getLocation(lead),
-          getEmail(lead),
-          getWebsite(lead),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return searchableText.includes(
-          normalizedSearch,
-        );
-      });
-    }
-
-
-    if (websiteFilter === "with") {
-      filtered = filtered.filter((lead) =>
-        Boolean(
-          getWebsite(lead),
-        ),
-      );
-    }
-
-
-    if (websiteFilter === "without") {
-      filtered = filtered.filter(
-        (lead) =>
-          !getWebsite(lead),
-      );
-    }
-
-
-    if (emailFilter === "with") {
-      filtered = filtered.filter((lead) =>
-        Boolean(getEmail(lead)),
-      );
-    }
-
-    if (emailFilter === "without") {
-      filtered = filtered.filter((lead) =>
-        !getEmail(lead),
-      );
-    }
-
-
-    if (
-      qualificationFilter !==
-      "all"
-    ) {
-      filtered = filtered.filter(
-        (lead) => {
-          const qualification =
-            getQualification(lead)
-              .toLowerCase()
-              .replaceAll(
-                "_",
-                " ",
-              );
-
-
-          if (
-            qualificationFilter ===
-            "qualified"
-          ) {
-            return (
-              qualification.includes(
-                "qualified",
-              ) &&
-              !qualification.includes(
-                "unqualified",
-              )
-            );
-          }
-
-
-          if (
-            qualificationFilter ===
-            "ready"
-          ) {
-            return (
-              qualification.includes(
-                "ready",
-              ) ||
-              qualification.includes(
-                "high",
-              )
-            );
-          }
-
-
-          if (
-            qualificationFilter ===
-            "unqualified"
-          ) {
-            return (
-              qualification.includes(
-                "unqualified",
-              ) ||
-              qualification.includes(
-                "not qualified",
-              )
-            );
-          }
-
-
-          return true;
-        },
-      );
-    }
-
-
-    filtered.sort(
-      (first, second) => {
-        if (sortBy === "date") {
-          return (
-            new Date(second.created_at || 0) -
-            new Date(first.created_at || 0)
-          );
-        }
-
-        if (
-          sortBy ===
-          "industry"
-        ) {
-          return getIndustry(
-            first,
-          ).localeCompare(
-            getIndustry(
-              second,
-            ),
-          );
-        }
-
-        // name (default)
-        return getLeadName(
-          first,
-        ).localeCompare(
-          getLeadName(
-            second,
-          ),
-        );
-      },
-    );
-
-
-    return filtered;
-  }, [
-    leads,
-    search,
-    websiteFilter,
-    emailFilter,
-    qualificationFilter,
-    sortBy,
-  ]);
-
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(
-      filteredLeads.length /
-        pageSize,
-    ),
-  );
-
-
-  const currentPage = Math.min(
-    page,
-    totalPages,
-  );
-
-
-  const paginatedLeads =
-    filteredLeads.slice(
-      (currentPage - 1) *
-        pageSize,
-      currentPage *
-        pageSize,
-    );
-
-
-  const selectedVisibleCount =
-    paginatedLeads.filter(
-      (lead, index) =>
-        selectedIds.includes(
-          getLeadId(lead)
-        ),
-    ).length;
-
-
-  const totalWithWebsite =
-    leads.filter(
-      (lead) =>
-        getWebsite(lead),
-    ).length;
-
-
-  const totalWithoutWebsite =
-    leads.length -
-    totalWithWebsite;
-
-
-  const clearFilters = () => {
-    setSearch("");
-    setWebsiteFilter("all");
-    setEmailFilter("all");
-    setQualificationFilter(
-      "all",
-    );
-    setPage(1);
-  };
-
+  const selectedVisibleCount = leads.filter(l => selectedIds.includes(getLeadId(l))).length;
 
   const hasFilters =
     search.trim() ||
-    websiteFilter !==
-      "all" ||
+    websiteFilter !== "all" ||
     emailFilter !== "all" ||
-    qualificationFilter !==
-      "all";
+    qualificationFilter !== "all" ||
+    dateFilter !== "1";
 
+  // ------------------------------------------------------------------
+  // Actions
+  // ------------------------------------------------------------------
+  const clearFilters = () => {
+    setSearchInput(""); setSearch("");
+    setWebsiteFilter("all");
+    setEmailFilter("all");
+    setQualificationFilter("all");
+    setDateFilter("1");
+    setSortBy("date");
+    setPage(1);
+  };
 
-  const toggleLead = (
-    leadId,
-  ) => {
-    setSelectedIds(
-      (current) => {
-        if (
-          current.includes(
-            leadId,
-          )
-        ) {
-          return current.filter(
-            (id) =>
-              id !== leadId,
-          );
-        }
-
-        return [
-          ...current,
-          leadId,
-        ];
-      },
+  const toggleLead = (leadId) => {
+    setSelectedIds(cur =>
+      cur.includes(leadId) ? cur.filter(id => id !== leadId) : [...cur, leadId]
     );
   };
 
-
-  const toggleVisibleLeads =
-    () => {
-      const visibleIds =
-        paginatedLeads.map(
-          (lead, index) =>
-            getLeadId(
-              lead,
-              (currentPage - 1) *
-                pageSize +
-                index,
-            ),
-        );
-
-
-      const allVisibleSelected =
-        visibleIds.length >
-          0 &&
-        visibleIds.every(
-          (id) =>
-            selectedIds.includes(
-              id,
-            ),
-        );
-
-
-      if (
-        allVisibleSelected
-      ) {
-        setSelectedIds(
-          (current) =>
-            current.filter(
-              (id) =>
-                !visibleIds.includes(
-                  id,
-                ),
-            ),
-        );
-
-        return;
-      }
-
-
-      setSelectedIds(
-        (current) => [
-          ...new Set([
-            ...current,
-            ...visibleIds,
-          ]),
-        ],
-      );
-    };
-
-
-  /*
-   * -----------------------------------------------------------
-   * SELECTED LEADS → CAMPAIGN
-   * -----------------------------------------------------------
-   *
-   * Selected lead IDs are stored locally and also passed through
-   * React Router state.
-   *
-   * This allows Campaign Builder to recover the selected leads
-   * even after navigation/reload.
-   */
-
-  const createCampaignFromSelected =
-    () => {
-      if (
-        selectedIds.length ===
-        0
-      ) {
-        toast.info(
-          "Select at least one lead first.",
-        );
-
-        return;
-      }
-
-
-      const selectedLeadIds =
-        selectedIds.map(
-          (id) =>
-            String(id),
-        );
-
-
-      localStorage.setItem(
-        "leadflow_selected_lead_ids",
-        JSON.stringify(
-          selectedLeadIds,
-        ),
-      );
-
-
-      navigate(
-        "/campaigns/new",
-        {
-          state: {
-            selectedLeadIds,
-            selectedCount:
-              selectedLeadIds.length,
-          },
-        },
-      );
-    };
-
-
-  const goToPage = (
-    nextPage,
-  ) => {
-    setPage(
-      Math.max(
-        1,
-        Math.min(
-          nextPage,
-          totalPages,
-        ),
-      ),
-    );
+  const toggleVisibleLeads = () => {
+    const visibleIds = leads.map(l => getLeadId(l));
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
+    if (allSelected) {
+      setSelectedIds(cur => cur.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedIds(cur => [...new Set([...cur, ...visibleIds])]);
+    }
   };
 
+  const createCampaignFromSelected = () => {
+    if (selectedIds.length === 0) { toast.info("Select at least one lead first."); return; }
+    const selectedLeadIds = selectedIds.map(String);
+    localStorage.setItem("leadflow_selected_lead_ids", JSON.stringify(selectedLeadIds));
+    navigate("/campaigns/new", { state: { selectedLeadIds, selectedCount: selectedLeadIds.length } });
+  };
 
+  const goToPage = (next) => setPage(Math.max(1, Math.min(next, totalPages)));
+
+  // Filter change resets to page 1
+  const changeFilter = (setter) => (val) => { setter(val); setPage(1); };
+
+  // ------------------------------------------------------------------
+  // Render
+  // ------------------------------------------------------------------
   return (
     <main className="leads-page">
       <div className="leads-shell">
 
         {/* HEADER */}
-
         <header className="leads-header">
           <div>
-
-            <div className="leads-eyebrow">
-              LEAD MANAGEMENT
-            </div>
-
-
-            <h1>
-              Your business
-              <span>
-                {" "}
-                pipeline.
-              </span>
-            </h1>
-
-
+            <div className="leads-eyebrow">LEAD MANAGEMENT</div>
+            <h1>Your business <span> pipeline.</span></h1>
             <p className="leads-description">
-              Review discovered businesses,
-              filter opportunities, and
-              prepare leads for website
-              analysis and outreach.
+              Review discovered businesses, filter opportunities, and
+              prepare leads for website analysis and outreach.
             </p>
-
           </div>
-
 
           <button
             type="button"
             className="leads-refresh-button"
-            onClick={
-              loadLeads
-            }
-            disabled={
-              loading
-            }
+            onClick={fetchLeads}
+            disabled={loading}
           >
-
-            <LoaderCircle
-              size={16}
-              className={
-                loading
-                  ? "leads-spin"
-                  : ""
-              }
-            />
-
+            <LoaderCircle size={16} className={loading ? "leads-spin" : ""} />
             Refresh
-
           </button>
         </header>
 
 
         {/* SUMMARY */}
-
         <section className="leads-summary">
-
           <div className="lead-summary-card maroon">
-
-            <div className="lead-summary-icon">
-              <Users size={18} />
-            </div>
-
+            <div className="lead-summary-icon"><Users size={18} /></div>
             <div>
-              <span>
-                Total leads
-              </span>
-
-              <strong>
-                {leads.length}
-              </strong>
+              <span>Total leads</span>
+              <strong>{total}</strong>
             </div>
-
           </div>
-
 
           <div className="lead-summary-card blue">
-
-            <div className="lead-summary-icon">
-              <Globe size={18} />
-            </div>
-
+            <div className="lead-summary-icon"><Globe size={18} /></div>
             <div>
-              <span>
-                With website
-              </span>
-
-              <strong>
-                {totalWithWebsite}
-              </strong>
+              <span>Showing</span>
+              <strong>{leads.length}</strong>
             </div>
-
           </div>
-
 
           <div className="lead-summary-card sage">
-
-            <div className="lead-summary-icon">
-              <Target size={18} />
-            </div>
-
+            <div className="lead-summary-icon"><Target size={18} /></div>
             <div>
-              <span>
-                No website
-              </span>
-
-              <strong>
-                {totalWithoutWebsite}
-              </strong>
+              <span>Selected</span>
+              <strong>{selectedIds.length}</strong>
             </div>
-
           </div>
-
         </section>
 
 
         {/* FILTER PANEL */}
-
         <section className="leads-filter-panel">
-
           <div className="leads-filter-top">
-
             <div>
-
-              <span className="leads-panel-label">
-                LEAD DATABASE
-              </span>
-
-              <h2>
-                Search and filter leads
-              </h2>
-
+              <span className="leads-panel-label">LEAD DATABASE</span>
+              <h2>Search and filter leads</h2>
             </div>
-
-
-            <div className="leads-filter-icon">
-              <SlidersHorizontal
-                size={19}
-              />
-            </div>
-
+            <div className="leads-filter-icon"><SlidersHorizontal size={19} /></div>
           </div>
 
-
           <div className="leads-filters">
-
+            {/* Search — debounced, sent to backend */}
             <div className="leads-search">
-
               <Search size={17} />
-
               <input
                 type="text"
-                value={search}
-                onChange={(
-                  event,
-                ) => {
-                  setSearch(
-                    event.target.value,
-                  );
-
-                  setPage(1);
-                }}
+                value={searchInput}
+                onChange={e => handleSearchInput(e.target.value)}
                 placeholder="Search business, industry, location..."
               />
-
-
-              {search && (
+              {searchInput && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSearch(
-                      "",
-                    );
-
-                    setPage(1);
-                  }}
+                  onClick={() => { setSearchInput(""); setSearch(""); setPage(1); }}
                   aria-label="Clear search"
                 >
                   <X size={15} />
                 </button>
               )}
-
             </div>
 
-
+            {/* Website filter */}
             <select
-              value={
-                websiteFilter
-              }
-              onChange={(
-                event,
-              ) => {
-                setWebsiteFilter(
-                  event.target.value,
-                );
-
-                setPage(1);
-              }}
+              value={websiteFilter}
+              onChange={e => { setWebsiteFilter(e.target.value); setPage(1); }}
             >
-
-              <option value="all">
-                All websites
-              </option>
-
-              <option value="with">
-                With website
-              </option>
-
-              <option value="without">
-                No website
-              </option>
-
+              <option value="all">All websites</option>
+              <option value="with">With website</option>
+              <option value="without">No website</option>
             </select>
 
-
+            {/* Email filter */}
             <select
               value={emailFilter}
-              onChange={(event) => {
-                setEmailFilter(
-                  event.target.value,
-                );
-                setPage(1);
-              }}
+              onChange={e => { setEmailFilter(e.target.value); setPage(1); }}
             >
-
-              <option value="all">
-                All emails
-              </option>
-
-              <option value="with">
-                Has email
-              </option>
-
-              <option value="without">
-                No email
-              </option>
-
+              <option value="all">All emails</option>
+              <option value="with">Has email</option>
+              <option value="without">No email</option>
             </select>
 
-
+            {/* Qualification filter */}
             <select
-              value={
-                qualificationFilter
-              }
-              onChange={(
-                event,
-              ) => {
-                setQualificationFilter(
-                  event.target.value,
-                );
-
-                setPage(1);
-              }}
+              value={qualificationFilter}
+              onChange={e => { setQualificationFilter(e.target.value); setPage(1); }}
             >
-
-              <option value="all">
-                All qualification
-              </option>
-
-              <option value="qualified">
-                Qualified
-              </option>
-
-              <option value="ready">
-                Outreach ready
-              </option>
-
-              <option value="unqualified">
-                Unqualified
-              </option>
-
+              <option value="all">All qualification</option>
+              <option value="qualified">Qualified</option>
+              <option value="ready">Outreach ready</option>
+              <option value="unqualified">Unqualified</option>
             </select>
 
+            {/* Date range filter */}
+            <select
+              value={dateFilter}
+              onChange={e => { setDateFilter(e.target.value); setPage(1); }}
+            >
+              <option value="1">Last 1 day</option>
+              <option value="3">Last 3 days</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="all">All time</option>
+            </select>
 
+            {/* Sort */}
             <select
               value={sortBy}
-              onChange={(event) => {
-                setSortBy(event.target.value);
-                setPage(1);
-              }}
+              onChange={e => { setSortBy(e.target.value); setPage(1); }}
             >
               <option value="date">Sort: Newest</option>
               <option value="name">Sort: Name</option>
               <option value="industry">Sort: Industry</option>
             </select>
 
-
             {hasFilters && (
-              <button
-                type="button"
-                className="leads-clear-button"
-                onClick={
-                  clearFilters
-                }
-              >
+              <button type="button" className="leads-clear-button" onClick={clearFilters}>
                 Clear
               </button>
             )}
-
           </div>
-
         </section>
 
 
         {/* RESULTS */}
-
         <section className="leads-results-section">
-
           <div className="leads-results-header">
-
             <div>
-
-              <span className="leads-panel-label">
-                RESULTS
-              </span>
-
-              <h2>
-                {
-                  filteredLeads.length
-                }{" "}
-                {
-                  filteredLeads.length ===
-                  1
-                    ? "lead"
-                    : "leads"
-                }
-              </h2>
-
+              <span className="leads-panel-label">RESULTS</span>
+              <h2>{total} {total === 1 ? "lead" : "leads"}</h2>
             </div>
 
-
             <div className="leads-selection-info">
-
-              {selectedIds.length >
-                0 && (
-                <span>
-                  {
-                    selectedIds.length
-                  }{" "}
-                  selected
-                </span>
+              {selectedIds.length > 0 && (
+                <span>{selectedIds.length} selected</span>
               )}
 
-
-              {/* NEW CREATE CAMPAIGN BUTTON */}
-
-              {selectedIds.length >
-                0 && (
+              {selectedIds.length > 0 && (
                 <button
                   type="button"
                   className="leads-create-campaign-button"
-                  onClick={
-                    createCampaignFromSelected
-                  }
+                  onClick={createCampaignFromSelected}
                 >
                   Create Campaign
                 </button>
               )}
 
-
               <button
                 type="button"
-                onClick={
-                  toggleVisibleLeads
-                }
-                disabled={
-                  paginatedLeads.length ===
-                  0
-                }
+                onClick={toggleVisibleLeads}
+                disabled={leads.length === 0}
               >
-                {selectedVisibleCount ===
-                    paginatedLeads.length &&
-                  paginatedLeads.length >
-                    0
+                {selectedVisibleCount === leads.length && leads.length > 0
                   ? "Clear visible"
                   : "Select visible"}
               </button>
-
             </div>
-
           </div>
 
 
+          {/* Loading state */}
           {loading ? (
-
             <div className="leads-empty-state">
-
               <div className="leads-empty-icon">
-                <LoaderCircle
-                  size={24}
-                  className="leads-spin"
-                />
+                <LoaderCircle size={24} className="leads-spin" />
               </div>
-
-              <h3>
-                Loading your leads
-              </h3>
-
-              <p>
-                Fetching the latest
-                businesses from your
-                lead database.
-              </p>
-
+              <h3>Loading your leads</h3>
+              <p>Fetching from your lead database…</p>
             </div>
 
-          ) : filteredLeads.length ===
-            0 ? (
-
+          /* Empty state */
+          ) : leads.length === 0 ? (
             <div className="leads-empty-state">
-
-              <div className="leads-empty-icon">
-                <Users size={23} />
-              </div>
-
-              <h3>
-                {leads.length ===
-                0
-                  ? "No leads yet"
-                  : "No leads match your filters"}
-              </h3>
-
+              <div className="leads-empty-icon"><Users size={23} /></div>
+              <h3>{hasFilters ? "No leads match your filters" : "No leads yet"}</h3>
               <p>
-                {leads.length ===
-                0
-                  ? "Discover businesses first and your leads will appear here."
-                  : "Try changing your search or filters to see more leads."}
+                {hasFilters
+                  ? "Try changing your search or filters to see more leads."
+                  : "Discover businesses first and your leads will appear here."}
               </p>
-
-
               {hasFilters && (
-                <button
-                  type="button"
-                  className="leads-empty-action"
-                  onClick={
-                    clearFilters
-                  }
-                >
+                <button type="button" className="leads-empty-action" onClick={clearFilters}>
                   Clear filters
                 </button>
               )}
-
             </div>
 
+          /* Table */
           ) : (
-
             <div className="leads-table-wrapper">
-
               <div className="leads-table-head">
-
                 <span className="lead-table-check">
-
                   <button
                     type="button"
-                    onClick={
-                      toggleVisibleLeads
-                    }
+                    onClick={toggleVisibleLeads}
                     aria-label="Select visible leads"
                   >
-
-                    <span
-                      className={
-                        selectedVisibleCount ===
-                          paginatedLeads.length
-                          ? "checked"
-                          : ""
-                      }
-                    >
-
-                      {selectedVisibleCount ===
-                        paginatedLeads.length &&
-                        paginatedLeads.length >
-                          0 && (
-                          <span />
-                        )}
-
+                    <span className={selectedVisibleCount === leads.length ? "checked" : ""}>
+                      {selectedVisibleCount === leads.length && leads.length > 0 && <span />}
                     </span>
-
                   </button>
-
                 </span>
-
-
-                <span>
-                  Business
-                </span>
-
-                <span>
-                  Location
-                </span>
-
-                <span>
-                  Contact
-                </span>
-
-                <span>
-                  Website
-                </span>
-
-                <span>
-                  Email
-                </span>
-
+                <span>Business</span>
+                <span>Location</span>
+                <span>Contact</span>
+                <span>Website</span>
+                <span>Email</span>
               </div>
-
 
               <div className="leads-table-body">
+                {leads.map((lead) => {
+                  const leadId    = getLeadId(lead);
+                  const website   = getWebsite(lead);
+                  const email     = getEmail(lead);
+                  const phone     = getPhone(lead);
+                  const isSelected = selectedIds.includes(leadId);
 
-                {paginatedLeads.map(
-                  (
-                    lead,
-                    index,
-                  ) => {
-
-                    const absoluteIndex =
-                      (currentPage -
-                        1) *
-                        pageSize +
-                      index;
-
-
-                    const leadId =
-                      getLeadId(
-                        lead,
-                        absoluteIndex,
-                      );
-
-
-                    const website =
-                      getWebsite(
-                        lead,
-                      );
-
-
-                    const email =
-                      getEmail(
-                        lead,
-                      );
-
-
-                    const phone =
-                      getPhone(
-                        lead,
-                      );
-
-
-                    const isSelected =
-                      selectedIds.includes(
-                        leadId,
-                      );
-
-
-                    return (
-                      <article
-                        key={
-                          leadId
-                        }
-                        className={`lead-row ${
-                          isSelected
-                            ? "selected"
-                            : ""
-                        }`}
-                      >
-
-                        <div className="lead-row-check">
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              toggleLead(
-                                leadId,
-                              )
-                            }
-                            aria-label={`Select ${getLeadName(
-                              lead,
-                            )}`}
-                          >
-
-                            <span
-                              className={
-                                isSelected
-                                  ? "checked"
-                                  : ""
-                              }
-                            >
-
-                              {isSelected && (
-                                <span />
-                              )}
-
-                            </span>
-
-                          </button>
-
-                        </div>
-
-
-                        <div className="lead-business-cell">
-
-                          <div className="lead-business-avatar">
-                            {getLeadName(
-                              lead,
-                            )
-                              .charAt(
-                                0,
-                              )
-                              .toUpperCase()}
-                          </div>
-
-
-                          <div>
-
-                            <strong>
-                              {getLeadName(
-                                lead,
-                              )}
-                            </strong>
-
-                            <span>
-                              {getIndustry(
-                                lead,
-                              )}
-                            </span>
-
-                          </div>
-
-                        </div>
-
-
-                        <div className="lead-location-cell">
-
-                          <MapPin
-                            size={14}
-                          />
-
-                          <span>
-                            {getLocation(
-                              lead,
-                            )}
+                  return (
+                    <article
+                      key={leadId}
+                      className={`lead-row ${isSelected ? "selected" : ""}`}
+                    >
+                      <div className="lead-row-check">
+                        <button
+                          type="button"
+                          onClick={() => toggleLead(leadId)}
+                          aria-label={`Select ${getLeadName(lead)}`}
+                        >
+                          <span className={isSelected ? "checked" : ""}>
+                            {isSelected && <span />}
                           </span>
+                        </button>
+                      </div>
 
+                      <div className="lead-business-cell">
+                        <div className="lead-business-avatar">
+                          {getLeadName(lead).charAt(0).toUpperCase()}
                         </div>
-
-
-                        <div className="lead-contact-cell">
-
-                          {email && (
-                            <div>
-
-                              <Mail
-                                size={13}
-                              />
-
-                              <span>
-                                {email}
-                              </span>
-
-                            </div>
-                          )}
-
-
-                          {phone && (
-                            <div>
-
-                              <Phone
-                                size={13}
-                              />
-
-                              <span>
-                                {phone}
-                              </span>
-
-                            </div>
-                          )}
-
-
-                          {!email &&
-                            !phone && (
-                              <span className="lead-not-available">
-                                No contact
-                              </span>
-                            )}
-
+                        <div>
+                          <strong>{getLeadName(lead)}</strong>
+                          <span>{getIndustry(lead)}</span>
                         </div>
+                      </div>
 
+                      <div className="lead-location-cell">
+                        <MapPin size={14} />
+                        <span>{getLocation(lead)}</span>
+                      </div>
 
-                        <div className="lead-website-cell">
+                      <div className="lead-contact-cell">
+                        {email && (
+                          <div><Mail size={13} /><span>{email}</span></div>
+                        )}
+                        {phone && (
+                          <div><Phone size={13} /><span>{phone}</span></div>
+                        )}
+                        {!email && !phone && (
+                          <span className="lead-not-available">No contact</span>
+                        )}
+                      </div>
 
-                          {website ? (
+                      <div className="lead-website-cell">
+                        {website ? (
+                          <a href={website} target="_blank" rel="noreferrer">
+                            <Globe size={14} />Website
+                          </a>
+                        ) : (
+                          <span className="lead-no-website">No website</span>
+                        )}
+                      </div>
 
-                            <a
-                              href={
-                                website
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-
-                              <Globe
-                                size={14}
-                              />
-
-                              Website
-
-                            </a>
-
-                          ) : (
-
-                            <span className="lead-no-website">
-                              No website
-                            </span>
-
-                          )}
-
-                        </div>
-
-
-                        <div className="lead-email-col">
-
-                          {email ? (
-                            <a
-                              href={`mailto:${email}`}
-                              className="lead-email-link"
-                            >
-                              <Mail size={13} />
-                              <span>{email}</span>
-                            </a>
-                          ) : (
-                            <span className="lead-not-available">
-                              No email
-                            </span>
-                          )}
-
-                        </div>
-
-                      </article>
-                    );
-                  },
-                )}
-
+                      <div className="lead-email-col">
+                        {email ? (
+                          <a href={`mailto:${email}`} className="lead-email-link">
+                            <Mail size={13} /><span>{email}</span>
+                          </a>
+                        ) : (
+                          <span className="lead-not-available">No email</span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
-
             </div>
           )}
 
 
           {/* PAGINATION */}
-
-          {filteredLeads.length >
-            0 && (
-
+          {total > PAGE_SIZE && (
             <div className="leads-pagination">
-
               <span>
-
-                Showing{" "}
-
-                {Math.min(
-                  (currentPage -
-                    1) *
-                    pageSize +
-                    1,
-                  filteredLeads.length,
-                )}
-
-                {" - "}
-
-                {Math.min(
-                  currentPage *
-                    pageSize,
-                  filteredLeads.length,
-                )}{" "}
-
-                of{" "}
-                {
-                  filteredLeads.length
-                }
-
+                Showing {Math.min((page - 1) * PAGE_SIZE + 1, total)}
+                {" – "}
+                {Math.min(page * PAGE_SIZE, total)} of {total}
               </span>
 
-
               <div className="leads-pagination-controls">
-
                 <button
                   type="button"
-                  onClick={() =>
-                    goToPage(
-                      currentPage -
-                        1,
-                    )
-                  }
-                  disabled={
-                    currentPage ===
-                    1
-                  }
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page === 1}
                   aria-label="Previous page"
                 >
-                  <ChevronLeft
-                    size={16}
-                  />
+                  <ChevronLeft size={16} />
                 </button>
 
-
-                <span>
-                  {
-                    currentPage
-                  }{" "}
-                  /{" "}
-                  {
-                    totalPages
-                  }
-                </span>
-
+                <span>{page} / {totalPages}</span>
 
                 <button
                   type="button"
-                  onClick={() =>
-                    goToPage(
-                      currentPage +
-                        1,
-                    )
-                  }
-                  disabled={
-                    currentPage ===
-                    totalPages
-                  }
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= totalPages}
                   aria-label="Next page"
                 >
-                  <ChevronRight
-                    size={16}
-                  />
+                  <ChevronRight size={16} />
                 </button>
-
               </div>
-
             </div>
           )}
 
         </section>
-
       </div>
     </main>
   );
 }
-
-
-export default LeadsPage;

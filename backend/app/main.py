@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.config import settings
 from app.routers.campaigns import router as campaigns_router
@@ -134,9 +135,12 @@ app.add_middleware(
 
 app.add_middleware(
     InMemoryRateLimitMiddleware,
-    requests_per_window=120,
+    requests_per_window=200,
     window_seconds=60,
 )
+
+# GZip compression — shrinks large JSON responses ~70%
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # CORS
 app.add_middleware(

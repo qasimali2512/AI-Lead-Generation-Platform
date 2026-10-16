@@ -166,6 +166,19 @@ function LeadEmailRow({ lead, index }) {
           </div>
         </td>
 
+        {/* From (sender email account) */}
+        <td>
+          <div className="sender-email-cell">
+            {lead.sender_email ? (
+              <span className="sender-email-badge" title={lead.sender_display_name || lead.sender_email}>
+                {lead.sender_email}
+              </span>
+            ) : (
+              <span className="detail-meta">—</span>
+            )}
+          </div>
+        </td>
+
         {/* Status */}
         <td>
           <span className={`lead-status-badge ${statusClass}`}>
@@ -194,7 +207,7 @@ function LeadEmailRow({ lead, index }) {
       {/* Expanded email body */}
       {expanded && lead.email_body && (
         <tr className="email-body-row">
-          <td colSpan={7}>
+          <td colSpan={8}>
             <div className="email-body-panel">
               <div className="email-body-header">
                 <Mail size={14} />
@@ -789,6 +802,7 @@ export default function CampaignDetailPage() {
                   <th>Recipient</th>
                   <th>Subject</th>
                   <th>Scheduled for</th>
+                  <th>From</th>
                   <th>Status</th>
                   <th />
                 </tr>

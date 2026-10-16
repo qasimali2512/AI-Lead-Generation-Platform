@@ -192,7 +192,24 @@ def get_campaign_detail_enriched(
         }
 
     # ------------------------------------------------------------------ #
-    # 5. Assemble enriched dicts in Python (no more DB round-trips)
+    # 5. Batch-fetch all related EmailAccount items (1 query)
+    # ------------------------------------------------------------------ #
+    account_ids = list({
+        cl.email_account_id
+        for cl in campaign_leads
+        if cl.email_account_id is not None
+    })
+    accounts_by_id: dict[UUID, EmailAccount] = {}
+    if account_ids:
+        accounts_by_id = {
+            a.id: a
+            for a in db.scalars(
+                select(EmailAccount).where(EmailAccount.id.in_(account_ids))
+            ).all()
+        }
+
+    # ------------------------------------------------------------------ #
+    # 6. Assemble enriched dicts in Python (no more DB round-trips)
     # ------------------------------------------------------------------ #
     enriched: list[dict] = []
 
@@ -200,6 +217,7 @@ def get_campaign_detail_enriched(
         lead       = leads_by_id.get(cl.lead_id)
         queue_item = queues_by_id.get(cl.email_queue_id) if cl.email_queue_id else None
         draft      = drafts_by_id.get(cl.ai_email_draft_id) if cl.ai_email_draft_id else None
+        account    = accounts_by_id.get(cl.email_account_id) if cl.email_account_id else None
 
         enriched.append({
             # CampaignLead fields
@@ -219,6 +237,9 @@ def get_campaign_detail_enriched(
             "lead_email":    lead.email    if lead else None,
             "lead_industry": lead.industry if lead else None,
             "lead_city":     lead.city     if lead else None,
+            # Sender email account info
+            "sender_email":        account.email        if account else None,
+            "sender_display_name": account.display_name if account else None,
             # Email content (queue preferred over draft)
             "email_subject": (
                 queue_item.subject   if queue_item else

@@ -7,6 +7,7 @@ import {
   Play,
   RotateCcw,
   Square,
+  X,
   Zap,
 } from "lucide-react";
 import { toast } from "react-toastify";
@@ -23,12 +24,20 @@ const INTERVAL_OPTIONS = [
   { value: 60, label: "1 hour" },
 ];
 
+const CITY_SIZE_OPTIONS = [
+  { value: "big", label: "Big", hint: "300k+ people" },
+  { value: "medium", label: "Medium", hint: "50k - 300k" },
+  { value: "small", label: "Small", hint: "5k - 50k" },
+  { value: "mix", label: "Mix", hint: "3 small : 1 big" },
+];
+
 const EMPTY_FORM = {
   industry: "",
   batch_size: 50,
   require_email: false,
   require_website: false,
   run_every_minutes: 30,
+  city_size: "mix",
   countries: [],
 };
 
@@ -63,6 +72,7 @@ function AutoDiscoveryPage() {
         require_email: data.require_email,
         require_website: data.require_website,
         run_every_minutes: data.run_every_minutes,
+        city_size: data.city_size || "mix",
         countries: data.countries || [],
       });
     }
@@ -114,12 +124,19 @@ function AutoDiscoveryPage() {
     setForm((current) => ({ ...current, [name]: value }));
   }
 
-  function toggleCountry(country) {
+  function addCountry(code) {
+    if (!code) return;
+    setForm((current) =>
+      current.countries.includes(code)
+        ? current
+        : { ...current, countries: [...current.countries, code] },
+    );
+  }
+
+  function removeCountry(code) {
     setForm((current) => ({
       ...current,
-      countries: current.countries.includes(country)
-        ? current.countries.filter((c) => c !== country)
-        : [...current.countries, country],
+      countries: current.countries.filter((c) => c !== code),
     }));
   }
 
@@ -177,7 +194,7 @@ function AutoDiscoveryPage() {
       });
       await autoDiscoveryService.runNow();
       toast.success(
-        "Started for the next location. Results appear in 1-3 minutes.",
+        "Started. It can take a few minutes; new leads appear in Leads.",
       );
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -190,7 +207,7 @@ function AutoDiscoveryPage() {
     try {
       const data = await autoDiscoveryService.resetLocation();
       applyServerState(data, { updateForm: false });
-      toast.success("Will start again from the first location.");
+      toast.success("Visited cities cleared. Starting over.");
     } catch (error) {
       toast.error(getErrorMessage(error));
     }
@@ -209,6 +226,13 @@ function AutoDiscoveryPage() {
   }
 
   const isOn = Boolean(status?.enabled);
+
+  const countryNames = Object.fromEntries(
+    allCountries.map((country) => [country.code, country.name]),
+  );
+  const availableCountries = allCountries.filter(
+    (country) => !form.countries.includes(country.code),
+  );
 
   return (
     <main className="lead-discovery-page">
@@ -233,9 +257,10 @@ function AutoDiscoveryPage() {
             </h1>
 
             <p className="lead-discovery-description">
-              Choose an industry once. The system searches whole cities (no
-              radius), moves to a new country, state and city after every
-              batch, and never saves the same business twice.
+              Choose an industry once. The system searches whole cities
+              anywhere in the world (big or small), moves on to the next city
+              until each batch is full, and never saves the same business
+              twice.
             </p>
           </div>
         </header>
@@ -349,29 +374,67 @@ function AutoDiscoveryPage() {
           </div>
 
           <div className="discovery-field auto-countries">
+            <label>City size</label>
+            <div className="discovery-filter-options" role="group">
+              {CITY_SIZE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`discovery-filter-option ${
+                    form.city_size === option.value ? "selected" : ""
+                  }`}
+                  onClick={() => setField("city_size", option.value)}
+                  aria-pressed={form.city_size === option.value}
+                >
+                  {option.label}
+                  <span className="auto-size-hint">{option.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="discovery-field auto-countries">
             <label>
               Countries{" "}
               <span className="auto-hint">
-                (none selected = all countries)
+                (none selected = the whole world)
               </span>
             </label>
-            <div className="auto-chip-row">
-              {allCountries.map((country) => {
-                const selected = form.countries.includes(country);
-                return (
+
+            <select
+              className="auto-country-select"
+              value=""
+              onChange={(event) => addCountry(event.target.value)}
+              disabled={availableCountries.length === 0}
+            >
+              <option value="">
+                {allCountries.length === 0
+                  ? "Country list is loading..."
+                  : "Add a country..."}
+              </option>
+              {availableCountries.map((country) => (
+                <option key={country.code} value={country.code}>
+                  {country.name}
+                </option>
+              ))}
+            </select>
+
+            {form.countries.length > 0 && (
+              <div className="auto-chip-row">
+                {form.countries.map((code) => (
                   <button
-                    key={country}
+                    key={code}
                     type="button"
-                    className={`auto-chip ${selected ? "selected" : ""}`}
-                    onClick={() => toggleCountry(country)}
-                    aria-pressed={selected}
+                    className="auto-chip selected"
+                    onClick={() => removeCountry(code)}
+                    title="Remove"
                   >
-                    {selected && <Check size={12} />}
-                    {country}
+                    {countryNames[code] || code}
+                    <X size={12} />
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="auto-actions">
@@ -421,7 +484,7 @@ function AutoDiscoveryPage() {
               ) : (
                 <Zap size={14} />
               )}
-              Run next location now
+              Run now
             </button>
           </div>
         </section>
@@ -448,14 +511,23 @@ function AutoDiscoveryPage() {
               <strong>{status?.last_location || "-"}</strong>
               <small>
                 {status?.last_location
-                  ? `${status.last_run_found} new leads`
+                  ? `${status.last_run_found} new leads in the last run`
                   : ""}
               </small>
             </div>
             <div className="auto-stat">
               <span>Next location</span>
               <strong>{status?.next_location || "-"}</strong>
-              <small>of {status?.total_locations ?? 0} locations</small>
+              <small>
+                {status?.next_location && status?.next_location_count > 0
+                  ? `of ${status.next_location_count} locations`
+                  : ""}
+              </small>
+            </div>
+            <div className="auto-stat">
+              <span>Cities done</span>
+              <strong>{status?.cities_visited ?? 0}</strong>
+              <small>for this industry</small>
             </div>
             <div className="auto-stat">
               <span>Last run</span>
@@ -484,7 +556,7 @@ function AutoDiscoveryPage() {
               onClick={resetLocation}
             >
               <RotateCcw size={14} />
-              Start from first location
+              Start over (forget visited cities)
             </button>
           </div>
         </section>

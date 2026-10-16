@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -14,11 +15,15 @@ from app.schemas.auto_discovery import (
     AutoDiscoverySettingsResponse,
     AutoDiscoveryUpdateRequest,
 )
-from app.services.auto_discovery import run_now_background
-from app.services.auto_discovery_locations import (
-    available_countries,
-    build_location_sequence,
+from app.services.auto_discovery import (
+    clear_visited,
+    count_visited,
+    industry_key,
+    run_now_background,
+    _load_visited,
 )
+import random
+from app.services.geonames import GeoDataUnavailable, get_geo_data, pick_city
 from app.utils.auth import get_current_user
 
 router = APIRouter(
@@ -41,15 +46,41 @@ def _get_or_create(db: Session, user_id: UUID) -> AutoDiscoverySettings:
     return cfg
 
 
-def _to_response(cfg: AutoDiscoverySettings) -> AutoDiscoverySettingsResponse:
+def _to_response(db: Session, cfg: AutoDiscoverySettings) -> AutoDiscoverySettingsResponse:
     response = AutoDiscoverySettingsResponse.model_validate(cfg)
-    sequence = build_location_sequence(cfg.countries)
-    response.total_locations = len(sequence)
-    if sequence:
-        country, state, city = sequence[cfg.location_index % len(sequence)]
-        response.next_location = ", ".join(
-            p for p in (city, state, country) if p
-        )
+    if cfg.industry:
+        key = industry_key(cfg.industry)
+        response.cities_visited = count_visited(db, cfg.user_id, key)
+
+        # Next location preview (non-blocking, best-effort)
+        try:
+            geo = get_geo_data()
+            visited = _load_visited(db, cfg.user_id, key)
+            countries = {str(c).upper() for c in (cfg.countries or [])}
+            city, _ = pick_city(
+                geo,
+                city_size=cfg.city_size or "mix",
+                position=cfg.mix_position,
+                countries=countries,
+                excluded_ids=visited,
+                rng=random.Random(),
+            )
+            if city is not None:
+                state = geo.state_name(city)
+                country = geo.country_name(city.country_code)
+                parts = [p for p in (city.name, state, country) if p]
+                response.next_location = ", ".join(parts)
+                # Remaining cities = total eligible minus visited
+                if countries:
+                    total_eligible = sum(
+                        1 for c in geo.cities if c.country_code in countries
+                    )
+                else:
+                    total_eligible = len(geo.cities)
+                response.next_location_count = max(0, total_eligible - len(visited))
+        except Exception:  # noqa: BLE001
+            pass  # Preview fail hone par silently skip
+
     return response
 
 
@@ -59,7 +90,7 @@ def get_settings(
     db: Session = Depends(get_db),
 ):
     cfg = _get_or_create(db, UUID(current_user["sub"]))
-    return _to_response(cfg)
+    return _to_response(db, cfg)
 
 
 @router.put("", response_model=AutoDiscoverySettingsResponse)
@@ -76,13 +107,8 @@ def update_settings(
 
     cfg = _get_or_create(db, UUID(current_user["sub"]))
 
-    # Industry ya countries badle to list shuru se chalao
-    if (
-        (cfg.industry or "").lower() != (payload.industry or "").lower()
-        or sorted(cfg.countries or []) != sorted(payload.countries)
-    ):
-        cfg.location_index = 0
-        cfg.consecutive_failures = 0
+    if industry_key(cfg.industry) != industry_key(payload.industry):
+        cfg.mix_position = 0   # nayi industry -- mix pattern shuru se
 
     cfg.enabled = payload.enabled
     cfg.industry = payload.industry
@@ -90,11 +116,12 @@ def update_settings(
     cfg.require_email = payload.require_email
     cfg.require_website = payload.require_website
     cfg.run_every_minutes = payload.run_every_minutes
+    cfg.city_size = payload.city_size
     cfg.countries = payload.countries
 
     db.commit()
     db.refresh(cfg)
-    return _to_response(cfg)
+    return _to_response(db, cfg)
 
 
 @router.post("/run-now")
@@ -117,22 +144,31 @@ def run_now(
     db.commit()
 
     background_tasks.add_task(run_now_background, user_id)
-    return {"success": True, "message": "Discovery started for the next location."}
+    return {"success": True, "message": "Discovery started."}
 
 
 @router.post("/reset-location", response_model=AutoDiscoverySettingsResponse)
-def reset_location(
+def reset_progress(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Is industry ke visited shehr saaf karo -- shuru se dobara."""
     cfg = _get_or_create(db, UUID(current_user["sub"]))
-    cfg.location_index = 0
-    cfg.consecutive_failures = 0
+    if cfg.industry:
+        clear_visited(db, cfg.user_id, industry_key(cfg.industry))
+    cfg.mix_position = 0
     db.commit()
     db.refresh(cfg)
-    return _to_response(cfg)
+    return _to_response(db, cfg)
 
 
 @router.get("/countries", response_model=AutoDiscoveryCountriesResponse)
-def list_countries(current_user: dict = Depends(get_current_user)):
-    return AutoDiscoveryCountriesResponse(countries=available_countries())
+async def list_countries(current_user: dict = Depends(get_current_user)):
+    try:
+        data = await asyncio.to_thread(get_geo_data)
+    except GeoDataUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return AutoDiscoveryCountriesResponse(countries=data.countries())
