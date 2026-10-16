@@ -48,6 +48,19 @@ def _get_or_create(db: Session, user_id: UUID) -> AutoDiscoverySettings:
 
 def _to_response(db: Session, cfg: AutoDiscoverySettings) -> AutoDiscoverySettingsResponse:
     response = AutoDiscoverySettingsResponse.model_validate(cfg)
+
+    # JSONB mein kabhi kabhi purane {code, name} objects hote hain -- strings mein convert karo
+    raw_countries = cfg.countries or []
+    normalized: list[str] = []
+    for item in raw_countries:
+        if isinstance(item, str):
+            normalized.append(item)
+        elif isinstance(item, dict):
+            code = item.get("code") or item.get("name") or ""
+            if code:
+                normalized.append(str(code))
+    response.countries = list(dict.fromkeys(normalized))  # deduplicate, preserve order
+
     if cfg.industry:
         key = industry_key(cfg.industry)
         response.cities_visited = count_visited(db, cfg.user_id, key)

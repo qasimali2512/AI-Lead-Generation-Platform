@@ -282,8 +282,9 @@ function AutoDiscoveryPage() {
   const countryNames = Object.fromEntries(
     allCountries.map((country) => [country.code, country.name]),
   );
+  const selectedCodes = new Set(form.countries.map(toCountryCode).filter(Boolean));
   const availableCountries = allCountries.filter(
-    (country) => !form.countries.includes(country.code),
+    (country) => !selectedCodes.has(country.code),
   );
 
   return (
@@ -473,18 +474,21 @@ function AutoDiscoveryPage() {
 
             {form.countries.length > 0 && (
               <div className="auto-chip-row">
-                {form.countries.map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    className="auto-chip selected"
-                    onClick={() => removeCountry(code)}
-                    title="Remove"
-                  >
-                    {countryNames[code] || code}
-                    <X size={12} />
-                  </button>
-                ))}
+                {form.countries.map((code) => {
+                  const codeStr = toCountryCode(code) || String(code);
+                  return (
+                    <button
+                      key={codeStr}
+                      type="button"
+                      className="auto-chip selected"
+                      onClick={() => removeCountry(code)}
+                      title="Remove"
+                    >
+                      {countryNames[codeStr] || codeStr}
+                      <X size={12} />
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
