@@ -41,9 +41,61 @@ const EMPTY_FORM = {
   countries: [],
 };
 
+/* ---------- Safe helpers (objects ko JSX mein jane se rokte hain) ---------- */
+
+// Kisi bhi value ko safe text bana do
+function asText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    return String(value.name || value.code || value.message || "");
+  }
+  return String(value);
+}
+
+// Aik country item (string ya {code, name}) -> code string
+function toCountryCode(item) {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object") return String(item.code || item.name || "");
+  return "";
+}
+
+// Saved countries list -> unique code strings
+function normalizeCountries(list) {
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.map(toCountryCode).filter(Boolean))];
+}
+
+// Full countries list (dropdown ke liye) -> [{code, name}]
+function normalizeAllCountries(list) {
+  const arr = Array.isArray(list)
+    ? list
+    : Array.isArray(list?.countries)
+      ? list.countries
+      : [];
+
+  return arr
+    .map((c) => {
+      if (typeof c === "string") return { code: c, name: c };
+      if (c && typeof c === "object") {
+        const code = String(c.code ?? c.name ?? "");
+        return { code, name: String(c.name ?? c.code ?? "") };
+      }
+      return null;
+    })
+    .filter((c) => c && c.code);
+}
+
 function getErrorMessage(error) {
   const detail = error?.response?.data?.detail;
   if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return (
+      detail
+        .map((d) => (typeof d === "string" ? d : d?.msg || ""))
+        .filter(Boolean)
+        .join(", ") || "Invalid request."
+    );
+  }
   return error?.message || "Something went wrong.";
 }
 
@@ -73,7 +125,7 @@ function AutoDiscoveryPage() {
         require_website: data.require_website,
         run_every_minutes: data.run_every_minutes,
         city_size: data.city_size || "mix",
-        countries: data.countries || [],
+        countries: normalizeCountries(data.countries),
       });
     }
   }, []);
@@ -89,7 +141,7 @@ function AutoDiscoveryPage() {
           autoDiscoveryService.getCountries(),
         ]);
         if (cancelled) return;
-        setAllCountries(countries);
+        setAllCountries(normalizeAllCountries(countries));
         applyServerState(settings, { updateForm: true });
         formLoaded.current = true;
       } catch (error) {
@@ -508,16 +560,16 @@ function AutoDiscoveryPage() {
             </div>
             <div className="auto-stat">
               <span>Last location</span>
-              <strong>{status?.last_location || "-"}</strong>
+              <strong>{asText(status?.last_location) || "-"}</strong>
               <small>
                 {status?.last_location
-                  ? `${status.last_run_found} new leads in the last run`
+                  ? `${status.last_run_found ?? 0} new leads in the last run`
                   : ""}
               </small>
             </div>
             <div className="auto-stat">
               <span>Next location</span>
-              <strong>{status?.next_location || "-"}</strong>
+              <strong>{asText(status?.next_location) || "-"}</strong>
               <small>
                 {status?.next_location && status?.next_location_count > 0
                   ? `of ${status.next_location_count} locations`
@@ -537,7 +589,7 @@ function AutoDiscoveryPage() {
 
           {status?.last_error && (
             <div className="auto-error">
-              Last problem: {status.last_error}
+              Last problem: {asText(status.last_error)}
             </div>
           )}
 
