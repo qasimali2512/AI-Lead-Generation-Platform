@@ -12,6 +12,7 @@ from app.database import SessionLocal
 from app.models.email_queue import EmailQueue
 from app.models.website_opportunity import WebsiteOpportunity
 
+from app.services.campaign_progress import sync_campaign_progress
 from app.services.gmail_sender import process_due_queue
 from app.services.scheduler import scheduler_service
 
@@ -296,6 +297,63 @@ class SchedulerRunner:
 
         return activated
 
+    async def _process_active_campaigns(self, db) -> int:
+        """
+        Active campaigns ke pending leads ke liye AI email generate karke
+        email queue mein daalta hai.
+
+        Pehle yeh kaam sirf browser se POST /campaigns/{id}/process call
+        hone par hota tha. Is liye scheduled campaign "active" to ho jati
+        thi, lekin leads "Pending AI" hi rehte the - na email generate hoti
+        thi na send. Ab scheduler khud karta hai.
+
+        Per cycle per campaign limited leads (taake sending / follow-ups
+        block na hon).
+        """
+        from sqlalchemy import select
+        from app.models.campaign import Campaign, CampaignLead
+        from app.services.campaign_automation import process_campaign
+
+        PER_CAMPAIGN_BATCH = 10
+
+        campaigns = list(
+            db.scalars(
+                select(Campaign)
+                .where(
+                    Campaign.status == "active",
+                    Campaign.id.in_(
+                        select(CampaignLead.campaign_id).where(
+                            CampaignLead.status.in_(
+                                ["pending_ai", "retry", "generating_ai"]
+                            )
+                        )
+                    ),
+                )
+                .order_by(Campaign.started_at.asc())
+            ).all()
+        )
+
+        queued = 0
+
+        for campaign in campaigns:
+            try:
+                result = await process_campaign(
+                    db=db,
+                    user_id=campaign.user_id,
+                    campaign_id=campaign.id,
+                    include_failed=False,
+                    max_leads=PER_CAMPAIGN_BATCH,
+                )
+                queued += result.get("queued", 0)
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "Campaign processing failed: id=%s",
+                    campaign.id,
+                )
+
+        return queued
+
     async def _queue_due_follow_up_steps(self, db) -> int:
         """
         Due follow-ups ko yahin fresh generate karke actual email queue mein
@@ -331,6 +389,10 @@ class SchedulerRunner:
 
             activated = self._activate_scheduled_campaigns(db)
 
+            campaign_emails_queued = asyncio.run(
+                self._process_active_campaigns(db)
+            )
+
             opps_generated = self._auto_generate_opportunities(db)
 
             follow_ups = asyncio.run(self._queue_due_follow_up_steps(db))
@@ -342,9 +404,15 @@ class SchedulerRunner:
                 )
             )
 
+            # Sent -> campaign lead "sent", follow-up steps "sent",
+            # sequences / campaigns "completed" (only when truly finished).
+            progress = sync_campaign_progress(db)
+
             result = {
                 "retries_requeued": requeued,
                 "campaigns_activated": activated,
+                "campaign_emails_queued": campaign_emails_queued,
+                **progress,
                 "opportunities_generated": opps_generated,
                 "follow_up_steps_queued": follow_ups,
                 "emails_processed": email_result["processed"],

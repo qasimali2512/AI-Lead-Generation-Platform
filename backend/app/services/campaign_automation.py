@@ -160,6 +160,16 @@ async def process_campaign_lead(
             "Campaign lead not found."
         )
 
+    # The background worker and the manual /process endpoint can run at the
+    # same time; never generate a second email for a lead that is already
+    # being handled / queued / sent.
+    if campaign_lead.status not in {
+        "pending_ai",
+        "retry",
+        "failed",
+    }:
+        return campaign_lead
+
     campaign = db.scalar(
         select(Campaign).where(
             Campaign.id
@@ -332,7 +342,18 @@ async def process_campaign(
     db: Session,
     user_id: UUID,
     campaign_id: UUID,
+    include_failed: bool = True,
+    max_leads: int | None = None,
 ) -> dict:
+    """
+    Generate AI emails and queue them for a campaign's pending leads.
+
+    include_failed: manual /process call retries failed leads too. The
+        background worker passes False, otherwise a permanently failing
+        lead would be retried on every scheduler cycle.
+    max_leads: cap per call so one big campaign cannot block the scheduler
+        (sending + follow-ups) for minutes.
+    """
     campaign = db.scalar(
         select(Campaign).where(
             Campaign.id == campaign_id,
@@ -370,25 +391,22 @@ async def process_campaign(
     if stuck_leads:
         db.commit()
 
-    campaign_leads = list(
-        db.scalars(
-            select(CampaignLead)
-            .where(
-                CampaignLead.campaign_id
-                == campaign.id,
-                CampaignLead.status.in_(
-                    [
-                        "pending_ai",
-                        "retry",
-                        "failed",
-                    ]
-                ),
-            )
-            .order_by(
-                CampaignLead.created_at.asc()
-            )
-        ).all()
+    retry_statuses = ["pending_ai", "retry"]
+    if include_failed:
+        retry_statuses.append("failed")
+
+    lead_query = (
+        select(CampaignLead)
+        .where(
+            CampaignLead.campaign_id == campaign.id,
+            CampaignLead.status.in_(retry_statuses),
+        )
+        .order_by(CampaignLead.created_at.asc())
     )
+    if max_leads:
+        lead_query = lead_query.limit(max_leads)
+
+    campaign_leads = list(db.scalars(lead_query).all())
 
     processed = 0
     queued = 0
@@ -459,37 +477,10 @@ async def process_campaign(
         ):
             break
 
-    remaining = db.scalar(
-        select(CampaignLead).where(
-            CampaignLead.campaign_id
-            == campaign.id,
-            CampaignLead.status.in_(
-                [
-                    "pending_ai",
-                    "retry",
-                ]
-            ),
-        )
-    )
-
-    campaign = db.scalar(
-        select(Campaign).where(
-            Campaign.id == campaign.id,
-            Campaign.user_id == user_id,
-        )
-    )
-
-    if (
-        campaign
-        and campaign.status == "active"  # don't complete if paused/cancelled mid-run
-        and remaining is None
-        and failed == 0
-        and skipped == 0
-    ):
-        campaign.status = "completed"
-        campaign.completed_at = _utc_now()
-        campaign.updated_at = _utc_now()
-        db.commit()
+    # NOTE: the campaign is NOT marked "completed" here any more.  Queued
+    # is not sent, and follow-ups are still to come.  Completion is decided
+    # by app.services.campaign_progress.sync_campaign_progress() once every
+    # lead is sent/failed/skipped and every follow-up sequence has finished.
 
     return {
         "campaign_id": str(campaign_id),
