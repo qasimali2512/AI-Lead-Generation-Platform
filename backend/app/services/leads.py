@@ -83,6 +83,7 @@ def save_discovery_results(
     existing = 0
 
     saved_leads: list[Lead] = []
+    new_leads: list[Lead] = []
 
     try:
         for business in businesses:
@@ -97,10 +98,24 @@ def save_discovery_results(
 
             if was_created:
                 created += 1
+                new_leads.append(lead)
             else:
                 existing += 1
 
+        # Qualify newly discovered leads immediately so they do not remain
+        # in the default "pending" state after discovery.
+        from app.services.lead_qualification import qualify_lead
+
+        for lead in new_leads:
+            qualify_lead(
+                db=db,
+                lead_id=lead.id,
+                user_id=user_id,
+                commit=False,  # outer db.commit() below handles the transaction
+            )
+
         db.commit()
+
 
     except Exception:
         db.rollback()

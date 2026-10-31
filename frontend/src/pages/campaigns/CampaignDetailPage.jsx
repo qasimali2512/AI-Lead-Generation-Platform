@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  ExternalLink,
   Mail,
   Megaphone,
   Pause,
@@ -15,6 +16,7 @@ import {
   Trash2,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -97,6 +99,13 @@ function formatDate(value) {
 
 function countByStatus(leads, ...statuses) {
   return leads.filter((l) => statuses.includes(l.status)).length;
+}
+
+// Follow-up countdown: days remaining from campaign start
+function daysRemaining(startedAt, delayDays) {
+  if (!startedAt) return null;
+  const sendOn = new Date(new Date(startedAt).getTime() + delayDays * 86400000);
+  return Math.ceil((sendOn - new Date()) / 86400000);
 }
 
 // ---------------------------------------------------------------------------
@@ -229,9 +238,26 @@ function LeadEmailRow({ lead, index }) {
               </div>
 
               {lead.last_error && (
-                <div className="email-body-error">
+                <div className={`email-body-error ${
+                  lead.last_error.toLowerCase().includes("token") ||
+                  lead.last_error.toLowerCase().includes("refresh")
+                    ? "email-body-error--token"
+                    : ""
+                }`}>
                   <AlertTriangle size={13} />
-                  {lead.last_error}
+                  <span>{lead.last_error}</span>
+                  {(lead.last_error.toLowerCase().includes("token") ||
+                    lead.last_error.toLowerCase().includes("refresh") ||
+                    lead.last_error.toLowerCase().includes("access")) && (
+                    <a
+                      href="/email-accounts"
+                      className="email-error-reconnect-btn"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink size={11} />
+                      Reconnect account
+                    </a>
+                  )}
                 </div>
               )}
             </div>
@@ -726,22 +752,61 @@ export default function CampaignDetailPage() {
               </div>
 
               <div className="cd-followups">
-                {campaign.follow_up_settings.map((fu, i) => (
-                  <div key={i} className="cd-followup-row">
-                    <div className="cd-followup-num">{i + 1}</div>
-                    <div>
-                      <strong>{fu.label || `Follow-up ${i + 1}`}</strong>
-                      <span>
-                        Send after {fu.delay} {fu.unit}
+                {campaign.follow_up_settings.map((fu, i) => {
+                  // delay in days (unit may be 'days'/'hours')
+                  const delayDays =
+                    fu.unit === "hours"
+                      ? Math.round(fu.delay / 24)
+                      : Number(fu.delay) || 0;
+                  const remaining = daysRemaining(
+                    campaign.started_at,
+                    delayDays,
+                  );
+
+                  let countdownLabel = null;
+                  let countdownClass = "fu-countdown-neutral";
+                  if (campaign.started_at && fu.enabled) {
+                    if (remaining > 0) {
+                      countdownLabel = `${remaining} day${remaining !== 1 ? "s" : ""} remaining`;
+                      countdownClass = "fu-countdown-pending";
+                    } else if (remaining === 0) {
+                      countdownLabel = "Sends today";
+                      countdownClass = "fu-countdown-today";
+                    } else {
+                      countdownLabel = "Scheduled / sent";
+                      countdownClass = "fu-countdown-done";
+                    }
+                  }
+
+                  return (
+                    <div key={i} className="cd-followup-row">
+                      <div className="cd-followup-num">{i + 1}</div>
+                      <div className="cd-followup-info">
+                        <strong>{fu.label || `Follow-up ${i + 1}`}</strong>
+                        <span className="fu-send-after">
+                          <Clock size={11} />
+                          Send after {fu.delay} {fu.unit}
+                          {settings.start_time && settings.end_time && (
+                            <span className="fu-window">
+                              &nbsp;· {settings.start_time} – {settings.end_time}
+                            </span>
+                          )}
+                        </span>
+                        {countdownLabel && (
+                          <span className={`fu-countdown ${countdownClass}`}>
+                            <Zap size={10} />
+                            {countdownLabel}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`fu-badge ${fu.enabled ? "fu-on" : "fu-off"}`}
+                      >
+                        {fu.enabled ? "Enabled" : "Disabled"}
                       </span>
                     </div>
-                    <span
-                      className={`fu-badge ${fu.enabled ? "fu-on" : "fu-off"}`}
-                    >
-                      {fu.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}

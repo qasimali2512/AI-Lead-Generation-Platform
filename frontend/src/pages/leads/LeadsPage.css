@@ -456,10 +456,11 @@
   grid-template-columns:
     40px
     minmax(190px, 1.35fr)
-    minmax(150px, 1fr)
-    minmax(150px, 1fr)
-    120px
-    135px;
+    minmax(130px, 0.9fr)
+    minmax(130px, 0.9fr)
+    110px
+    100px
+    130px;
   align-items: center;
   gap: 12px;
 }
@@ -713,6 +714,53 @@
 
 
 /* =========================================================
+   SCORE BADGE
+========================================================= */
+
+.lead-score-cell {
+  display: flex;
+  align-items: center;
+}
+
+.lead-score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+/* Qualified — green */
+.lead-score-badge.qual-qualified {
+  color: #2d7a4f;
+  background: rgba(45, 122, 79, 0.12);
+}
+
+/* Outreach Ready — teal/blue */
+.lead-score-badge.qual-ready {
+  color: #1a6390;
+  background: rgba(26, 99, 144, 0.11);
+}
+
+/* Unqualified — red/maroon */
+.lead-score-badge.qual-unqualified {
+  color: var(--color-maroon);
+  background: rgba(127, 48, 53, 0.10);
+}
+
+/* Pending — neutral grey */
+.lead-score-badge.qual-pending {
+  color: var(--color-graphite-soft);
+  background: rgba(77, 71, 66, 0.08);
+}
+
+
+/* =========================================================
    EMPTY
 ========================================================= */
 
@@ -852,11 +900,12 @@
   .lead-row {
     grid-template-columns:
       35px
-      minmax(180px, 1.3fr)
-      minmax(130px, 0.9fr)
-      minmax(130px, 0.9fr)
-      105px
-      120px;
+      minmax(170px, 1.3fr)
+      minmax(120px, 0.85fr)
+      minmax(120px, 0.85fr)
+      100px
+      90px
+      115px;
   }
 }
 
@@ -880,7 +929,7 @@
 
   .leads-table-head,
   .lead-row {
-    min-width: 900px;
+    min-width: 980px;
   }
 }
 

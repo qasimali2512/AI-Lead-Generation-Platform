@@ -239,6 +239,38 @@ def get_geo_data() -> GeoData:
         return _cache
 
 
+def get_cached_geo_data() -> GeoData | None:
+    """Return loaded GeoNames data without triggering disk/network loading."""
+    return _cache
+
+
+def get_country_options() -> list[dict[str, str]]:
+    """Returns a lightweight country list for UI dropdowns without loading all cities."""
+    try:
+        country_lines = _read_lines(_ensure_file(COUNTRY_INFO))
+        country_names = parse_country_names(country_lines)
+        if not country_names:
+            return [{"code": "US", "name": "United States"}]
+        return [
+            {"code": code, "name": country_names.get(code, code)}
+            for code in sorted(country_names)
+        ]
+    except GeoDataUnavailable:
+        # Fallback for offline or blocked GeoNames access.
+        return [
+            {"code": "US", "name": "United States"},
+            {"code": "GB", "name": "United Kingdom"},
+            {"code": "CA", "name": "Canada"},
+            {"code": "AU", "name": "Australia"},
+            {"code": "AE", "name": "United Arab Emirates"},
+            {"code": "NZ", "name": "New Zealand"},
+            {"code": "IE", "name": "Ireland"},
+            {"code": "IN", "name": "India"},
+            {"code": "DE", "name": "Germany"},
+            {"code": "FR", "name": "France"},
+        ]
+
+
 def set_geo_data_for_tests(data: GeoData | None) -> None:
     global _cache
     _cache = data

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,6 +41,54 @@ class AutoDiscoverySettings(Base):
     last_run_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # =========================================================
+    # Auto-Campaign Automation
+    # =========================================================
+
+    # Jab auto-discovery leads dhunde aur threshold se zyada opportunities
+    # hon to khud campaign banao aur send shuru karo
+    auto_campaign_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    auto_campaign_paused: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    # Minimum opportunity % threshold (0-100). Agar found leads mein
+    # itni ya zyada % opportunities hain, campaign auto-create hoga.
+    auto_campaign_opportunity_threshold: Mapped[float] = mapped_column(
+        Float, nullable=False, default=30.0
+    )
+
+    # Per-day email limit for auto-created campaigns
+    auto_campaign_daily_limit: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=50
+    )
+
+    # Email accounts to use for auto campaigns (list of UUID strings)
+    auto_campaign_email_account_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+
+    # Sending window for auto campaigns
+    auto_campaign_start_time: Mapped[str] = mapped_column(
+        String(5), nullable=False, default="09:00"
+    )
+    auto_campaign_end_time: Mapped[str] = mapped_column(
+        String(5), nullable=False, default="17:00"
+    )
+
+    # Track when the last auto-campaign was created (to avoid duplicates per day)
+    auto_campaign_last_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Total auto-campaigns created so far
+    auto_campaigns_created: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

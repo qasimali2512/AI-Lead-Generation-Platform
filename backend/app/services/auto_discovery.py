@@ -315,12 +315,165 @@ async def run_for_settings(db: Session, cfg: AutoDiscoverySettings) -> dict:
     cfg.last_run_at = datetime.now(timezone.utc)
     db.commit()
 
+    # Auto-campaign: agar leads mile aur threshold meet hua to campaign banao
+    try:
+        cfg = db.merge(cfg)
+        await _maybe_create_auto_campaign(db, cfg, saved_total)
+    except Exception:  # noqa: BLE001
+        logger.exception("Auto-campaign creation failed after discovery run.")
+
     return {
         "saved": saved_total,
         "cities_tried": tried,
         "last_location": last_label,
         "error": last_error,
     }
+
+
+# =========================================================
+# Auto-Campaign: leads mile to campaign banao aur bhejo
+# =========================================================
+
+async def _maybe_create_auto_campaign(
+    db: Session,
+    cfg: AutoDiscoverySettings,
+    new_leads_count: int,
+) -> None:
+    """Create one campaign after enough qualified leads accumulate."""
+    if (
+        not cfg.auto_campaign_enabled
+        or cfg.auto_campaign_paused
+        or not cfg.auto_campaign_email_account_ids
+    ):
+        return
+
+    from uuid import UUID as PyUUID
+    from sqlalchemy import select as sa_select
+    from app.models.lead import Lead
+    from app.models.lead_qualification import LeadQualification
+    from app.models.email_account import EmailAccount
+    from app.models.campaign import Campaign, CampaignLead
+
+    now = datetime.now(timezone.utc)
+    target = max(1, int(cfg.auto_campaign_daily_limit))
+    threshold = float(cfg.auto_campaign_opportunity_threshold or 0)
+
+    enrolled_ids = set(db.scalars(sa_select(CampaignLead.lead_id)).all())
+    available_leads = list(
+        db.scalars(
+            sa_select(Lead)
+            .where(
+                Lead.user_id == cfg.user_id,
+                Lead.email.is_not(None),
+                Lead.email != "",
+            )
+            .order_by(Lead.created_at.desc())
+        ).all()
+    )
+    available_leads = [
+        lead for lead in available_leads if lead.id not in enrolled_ids
+    ]
+    if not available_leads:
+        return
+
+    qualification_by_lead = {
+        record.lead_id: record
+        for record in db.scalars(
+            sa_select(LeadQualification).where(
+                LeadQualification.user_id == cfg.user_id,
+                LeadQualification.lead_id.in_(
+                    [lead.id for lead in available_leads]
+                ),
+            )
+        ).all()
+    }
+    qualified_leads = [
+        lead
+        for lead in available_leads
+        if (
+            qualification_by_lead.get(lead.id) is not None
+            and qualification_by_lead[lead.id].total_score >= threshold
+        )
+    ]
+    if len(qualified_leads) < target:
+        logger.info(
+            "Auto-campaign waiting: %d/%d qualified leads.",
+            len(qualified_leads),
+            target,
+        )
+        return
+
+    qualified_leads.sort(
+        key=lambda lead: qualification_by_lead[lead.id].total_score,
+        reverse=True,
+    )
+    selected_leads = qualified_leads[:target]
+
+    account_ids = []
+    for account_id in cfg.auto_campaign_email_account_ids:
+        try:
+            account_ids.append(PyUUID(str(account_id)))
+        except (ValueError, AttributeError):
+            continue
+    accounts = list(
+        db.scalars(
+            sa_select(EmailAccount).where(
+                EmailAccount.user_id == cfg.user_id,
+                EmailAccount.id.in_(account_ids),
+                EmailAccount.status == "active",
+            )
+        ).all()
+    )
+    if not accounts:
+        logger.warning("Auto-campaign: no active email accounts found.")
+        return
+
+    industry_label = (cfg.industry or "Leads").title()
+    campaign = Campaign(
+        user_id=cfg.user_id,
+        name=f"Auto Campaign - {industry_label} {now:%b %d, %Y}",
+        status="active",
+        started_at=now,
+        selected_lead_count=len(selected_leads),
+        email_account_ids=[str(account.id) for account in accounts],
+        sending_settings={
+            "daily_limit": target,
+            "start_time": cfg.auto_campaign_start_time or "00:00",
+            "end_time": cfg.auto_campaign_end_time or "23:59",
+            "delay_min_minutes": 5,
+            "delay_max_minutes": 15,
+            "business_days_only": False,
+        },
+        follow_up_settings=[],
+        metadata_json={
+            "created_from": "auto_discovery",
+            "auto_discovery_industry": cfg.industry,
+            "minimum_lead_score": threshold,
+        },
+    )
+    db.add(campaign)
+    db.flush()
+
+    for index, lead in enumerate(selected_leads):
+        db.add(
+            CampaignLead(
+                campaign_id=campaign.id,
+                lead_id=lead.id,
+                email_account_id=accounts[index % len(accounts)].id,
+                status="pending_ai",
+            )
+        )
+
+    cfg.auto_campaign_last_created_at = now
+    cfg.auto_campaigns_created = (cfg.auto_campaigns_created or 0) + 1
+    cfg.enabled = False
+    cfg.auto_campaign_paused = True
+    db.commit()
+    logger.info(
+        "Auto-campaign created: '%s' with %d leads; discovery paused.",
+        campaign.name,
+        len(selected_leads),
+    )
 
 
 # =========================================================
@@ -346,7 +499,57 @@ def _claim(db: Session, cfg: AutoDiscoverySettings) -> bool:
     return (result.rowcount or 0) == 1
 
 
+def _reset_daily_auto_campaigns(db: Session) -> int:
+    """Resume discovery after the previous auto-campaign day is finished."""
+    from app.models.campaign import Campaign
+
+    now = datetime.now(timezone.utc)
+    reset_count = 0
+    settings = list(
+        db.scalars(
+            select(AutoDiscoverySettings).where(
+                    AutoDiscoverySettings.auto_campaign_paused.is_(True),
+                    AutoDiscoverySettings.auto_campaign_last_created_at.is_not(None),
+            )
+        ).all()
+    )
+
+    for cfg in settings:
+        if not cfg.auto_campaign_last_created_at:
+            continue
+        if cfg.auto_campaign_last_created_at.astimezone(timezone.utc).date() >= now.date():
+            continue
+
+        open_campaign = False
+        campaigns = db.scalars(
+            select(Campaign).where(
+                Campaign.user_id == cfg.user_id,
+                Campaign.status.in_(("draft", "scheduled", "active", "paused")),
+            )
+        ).all()
+        for campaign in campaigns:
+            if (campaign.metadata_json or {}).get("created_from") == "auto_discovery":
+                open_campaign = True
+                break
+
+        if not open_campaign:
+            cfg.enabled = True
+            cfg.auto_campaign_paused = False
+            reset_count += 1
+
+    if reset_count:
+        db.commit()
+        logger.info(
+            "Auto-campaign daily reset: resumed discovery for %d user(s).",
+            reset_count,
+        )
+
+    return reset_count
+
+
 async def run_due_users(db: Session) -> int:
+    _reset_daily_auto_campaigns(db)
+
     due = list(
         db.scalars(
             select(AutoDiscoverySettings).where(
@@ -367,6 +570,21 @@ async def run_due_users(db: Session) -> int:
         if not _claim(db, cfg):
             continue
         db.refresh(cfg)
+        # A previous run may already have accumulated the complete target.
+        # Check before discovering another city so campaign creation cannot be
+        # missed when the final qualified leads were saved by another worker.
+        try:
+            await _maybe_create_auto_campaign(db, cfg, 0)
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Accumulated auto-campaign check failed for user %s.",
+                cfg.user_id,
+            )
+        db.refresh(cfg)
+        if not cfg.enabled:
+            ran += 1
+            continue
         await run_for_settings(db, cfg)
         ran += 1
     return ran

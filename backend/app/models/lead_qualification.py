@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,20 +19,16 @@ class LeadQualification(Base):
 
     user_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(
-            "auth.users.id",
-            ondelete="CASCADE",
-        ),
+        # Foreign key is enforced by Supabase; omit it here because the
+        # auth schema is not part of SQLAlchemy's local metadata.
         nullable=False,
         index=True,
     )
 
     lead_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(
-            "public.leads.id",
-            ondelete="CASCADE",
-        ),
+        # Foreign key is enforced by Supabase; omit it here for the same
+        # cross-schema metadata limitation.
         nullable=False,
         index=True,
     )

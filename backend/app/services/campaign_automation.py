@@ -38,8 +38,8 @@ def _next_schedule_time(
     now = _utc_now()
 
     if previous_time is None:
-        # First email — send as soon as possible (small random delay)
-        delay = random.randint(delay_min, max(delay_min, 1))
+        # First email follows the same random spacing as the rest.
+        delay = random.randint(delay_min, delay_max)
         return now + timedelta(minutes=delay)
 
     # Subsequent emails — add random delay to previous

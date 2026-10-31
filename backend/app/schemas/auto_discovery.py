@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from uuid import UUID
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -18,6 +19,14 @@ class AutoDiscoveryUpdateRequest(BaseModel):
     run_every_minutes: int = Field(default=30, ge=5, le=1440)
     city_size: Literal["big", "medium", "small", "mix"] = "mix"
     countries: list[str] = Field(default_factory=list)
+
+    # Auto-Campaign Automation fields
+    auto_campaign_enabled: bool = False
+    auto_campaign_opportunity_threshold: float = Field(default=30.0, ge=0.0, le=100.0)
+    auto_campaign_daily_limit: int = Field(default=50, ge=1, le=10000)
+    auto_campaign_email_account_ids: list[str] = Field(default_factory=list)
+    auto_campaign_start_time: str = Field(default="09:00", min_length=5, max_length=5)
+    auto_campaign_end_time: str = Field(default="17:00", min_length=5, max_length=5)
 
     @field_validator("industry")
     @classmethod
@@ -58,6 +67,35 @@ class AutoDiscoverySettingsResponse(BaseModel):
     cities_visited: int = 0
     next_location: str | None = None
     next_location_count: int = 0
+
+    # Auto-Campaign Automation
+    auto_campaign_enabled: bool = False
+    auto_campaign_paused: bool = False
+    auto_campaign_opportunity_threshold: float = 30.0
+    auto_campaign_daily_limit: int = 50
+    auto_campaign_email_account_ids: list[str] = Field(default_factory=list)
+    auto_campaign_start_time: str = "09:00"
+    auto_campaign_end_time: str = "17:00"
+    auto_campaign_last_created_at: datetime | None = None
+    auto_campaigns_created: int = 0
+    auto_campaign_id: UUID | None = None
+    auto_campaign_status: str | None = None
+    auto_campaign_leads_total: int = 0
+    auto_campaign_leads_sent: int = 0
+    auto_campaign_leads_left: int = 0
+    auto_campaign_preview_count: int = 0
+    auto_campaign_preview_remaining: int = 0
+    auto_campaign_preview_leads: list["AutoCampaignLeadPreview"] = Field(
+        default_factory=list
+    )
+
+
+class AutoCampaignLeadPreview(BaseModel):
+    id: UUID
+    name: str
+    email: str
+    score: int
+    status: str = "queued"
 
 
 class CountryOption(BaseModel):

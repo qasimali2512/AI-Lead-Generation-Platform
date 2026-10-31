@@ -266,18 +266,11 @@ async def send_queue_email(
 
         brand = get_brand_settings(db=db, user_id=user_id)
 
-        # Default logo — frontend public folder
-        _default_logo = "cid:softpeak-brand-logo"
-        _inline_logo_path = (
-            Path(__file__).resolve().parents[3]
-            / "frontend" / "public" / "softpeak-logo.png"
-        )
-
         # Brand settings nahi hain to sensible defaults use karo
         agency_name     = (brand.agency_name    if brand else "SoftPeak Technologies")
-        logo_url        = (brand.logo_url        if brand and brand.logo_url else _default_logo)
-        if logo_url.startswith(("http://localhost", "http://127.0.0.1")):
-            logo_url = _default_logo
+        # Sirf valid HTTPS URL hi logo ke liye accept karo — CID/local nahi
+        _raw_logo = brand.logo_url if brand and brand.logo_url else None
+        logo_url  = _raw_logo if (_raw_logo and _raw_logo.startswith("https://")) else None
         primary_color   = (brand.primary_color   if brand else "#1f6b4f")
         secondary_color = (brand.secondary_color if brand else "#c49a4a")
         sender_name     = (brand.sender_name     if brand else None)
@@ -354,9 +347,7 @@ async def send_queue_email(
         body_text=queue_item.body_text,
         body_html=body_html,
         sender_email=sender_email,
-        inline_logo_path=(
-            _inline_logo_path if logo_url == _default_logo else None
-        ),
+        inline_logo_path=None,  # Koi image attach nahi — logo HTML/CSS mein hai
     )
 
     # ── Update daily send counter ──────────────────────────────────────

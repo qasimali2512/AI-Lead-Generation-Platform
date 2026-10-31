@@ -142,53 +142,8 @@ def calculate_qualification(
     opportunity_score = 0
     contact_score = 0
 
-    # ---------------------------------------------------------
-    # Business score
-    # ---------------------------------------------------------
-
-    if lead.name:
-        business_score += 10
-
-        add_factor(
-            factors,
-            "Business name available",
-            10,
-            "The lead has a business name.",
-        )
-
-    if lead.industry:
-        business_score += 10
-
-        add_factor(
-            factors,
-            "Industry available",
-            10,
-            "The lead has an identified industry.",
-        )
-
-    if lead.city:
-        business_score += 5
-
-        add_factor(
-            factors,
-            "City available",
-            5,
-            "The lead has a known city.",
-        )
-
-    if lead.country:
-        business_score += 5
-
-        add_factor(
-            factors,
-            "Country available",
-            5,
-            "The lead has a known country.",
-        )
-
-    # ---------------------------------------------------------
-    # Contact score
-    # ---------------------------------------------------------
+    # Business identity and phone are not scoring factors. The score is
+    # focused on website opportunity and whether outreach is possible.
 
     if lead.email:
         contact_score += 25
@@ -200,41 +155,20 @@ def calculate_qualification(
             "A business email is available.",
         )
 
-    if lead.phone:
-        contact_score += 15
-
-        add_factor(
-            factors,
-            "Phone available",
-            15,
-            "A business phone number is available.",
-        )
-
     # ---------------------------------------------------------
     # No website
     # ---------------------------------------------------------
 
     if lead.website_status == "no_website":
 
-        opportunity_score += 30
+        opportunity_score += 75
 
         add_factor(
             factors,
             "No website detected",
-            30,
+            75,
             "The business does not currently have a detected website.",
         )
-
-        if opportunity is not None:
-
-            opportunity_score += 20
-
-            add_factor(
-                factors,
-                "Website opportunity analyzed",
-                20,
-                "A website-development opportunity has been generated.",
-            )
 
     # ---------------------------------------------------------
     # Existing website
@@ -525,9 +459,13 @@ def save_qualification(
         "qualification_json"
     ]
 
-    db.commit()
+    lead.qualification_status = data[
+        "qualification_level"
+    ]
 
-    db.refresh(record)
+    # NOTE: Caller is responsible for committing the transaction.
+    # This allows save_qualification to be called inside an outer
+    # transaction (e.g. save_discovery_results) without double-commits.
 
     return record
 
@@ -536,7 +474,16 @@ def qualify_lead(
     db: Session,
     lead_id: UUID,
     user_id: UUID,
+    commit: bool = True,
 ) -> LeadQualification:
+    """Score + persist a single lead's qualification.
+
+    Args:
+        commit: If True (default), commit after saving so the score is
+                persisted immediately.  Pass False when called inside an
+                outer transaction that will commit itself (e.g.
+                save_discovery_results).
+    """
 
     lead = get_lead_for_user(
         db=db,
@@ -569,11 +516,52 @@ def qualify_lead(
         opportunity=opportunity,
     )
 
-    return save_qualification(
+    record = save_qualification(
         db=db,
         lead=lead,
         data=data,
     )
+
+    if commit:
+        db.commit()
+        db.refresh(record)
+
+    return record
+
+
+def qualify_pending_leads(
+    db: Session,
+    user_id: UUID,
+    batch_size: int = 5,
+) -> int:
+    """Qualify all pending leads for a user.
+
+    Uses a single commit per batch to avoid N x commit overhead and
+    session conflicts when called inside another transaction.
+    """
+    pending_leads = list(
+        db.scalars(
+            select(Lead).where(
+                Lead.user_id == user_id,
+                Lead.qualification_status == "pending",
+            ).limit(batch_size)
+        ).all()
+    )
+
+    if not pending_leads:
+        return 0
+
+    for lead in pending_leads:
+        qualify_lead(
+            db=db,
+            lead_id=lead.id,
+            user_id=user_id,
+            commit=False,
+        )
+
+    db.commit()
+
+    return len(pending_leads)
 
 
 def get_latest_qualification(

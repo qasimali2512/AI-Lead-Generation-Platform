@@ -32,17 +32,57 @@ function getWebsite(lead)      { return lead.website || lead.website_url || lead
 function getEmail(lead)        { return lead.email || lead.email_address || null; }
 function getPhone(lead)        { return lead.phone || lead.phone_number || null; }
 
-function getQualification(lead) {
-  const q = lead.qualification_level || lead.qualification || lead.qualification_status;
-  return q ? String(q) : "Not qualified";
+function getQualificationStatus(lead) {
+  return lead.qualification_status || lead.qualification_level || "pending";
 }
 
-function getQualificationClass(lead) {
-  const v = getQualification(lead).toLowerCase().replaceAll("_", " ");
-  if (v.includes("qualified") && !v.includes("unqualified")) return "qualified";
-  if (v.includes("high") || v.includes("ready")) return "high";
-  if (v.includes("low") || v.includes("not")) return "low";
-  return "neutral";
+function getScoreLabel(lead) {
+  if (lead.total_score === null || lead.total_score === undefined) {
+    return "Pending";
+  }
+  return `${lead.total_score} pts`;
+}
+
+function getScoreTitle(lead) {
+  if (lead.total_score === null || lead.total_score === undefined) {
+    return "Score pending: this lead has not been qualified yet.";
+  }
+
+  return [
+    `Total score: ${lead.total_score} points`,
+    `Website: ${lead.website_score ?? 0}`,
+    `Website opportunity: ${lead.opportunity_score ?? 0}`,
+    `Email: ${lead.contact_score ?? 0}`,
+    lead.outreach_readiness
+      ? `Outreach: ${lead.outreach_readiness.replace(/_/g, " ")}`
+      : null,
+    lead.qualification_reason || null,
+  ].filter(Boolean).join(" | ");
+}
+
+function getQualificationLabel(status) {
+  const s = String(status).toLowerCase().replace(/_/g, " ");
+  if (s === "qualified")         return "Qualified";
+  if (s === "outreach ready" || s === "ready") return "Ready";
+  if (s === "high")              return "High";
+  if (s === "medium")            return "Medium";
+  if (s === "low")               return "Low";
+  if (s === "unqualified")       return "Unqualified";
+  if (s === "not qualified")     return "Not Qualified";
+  if (s === "pending")           return "Pending";
+  // capitalise unknown values
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getQualificationClass(status) {
+  const s = String(status).toLowerCase().replace(/_/g, " ");
+  if (s === "qualified")                        return "qual-qualified";
+  if (s === "outreach ready" || s === "ready") return "qual-ready";
+  if (s === "high")                             return "qual-qualified";
+  if (s === "medium")                           return "qual-ready";
+  if (s === "low")                              return "qual-unqualified";
+  if (s === "unqualified" || s === "not qualified") return "qual-unqualified";
+  return "qual-pending";
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +465,7 @@ export default function LeadsPage() {
                 <span>Location</span>
                 <span>Contact</span>
                 <span>Website</span>
+                <span>Score</span>
                 <span>Email</span>
               </div>
 
@@ -488,6 +529,24 @@ export default function LeadsPage() {
                         ) : (
                           <span className="lead-no-website">No website</span>
                         )}
+                      </div>
+
+                      <div className="lead-score-cell">
+                        {(() => {
+                          const qs  = getQualificationStatus(lead);
+                          const cls = getQualificationClass(qs);
+                          const lbl = lead.total_score == null
+                            ? getQualificationLabel(qs)
+                            : `${getScoreLabel(lead)} ${getQualificationLabel(qs)}`;
+                          return (
+                            <span
+                              className={`lead-score-badge ${cls}`}
+                              title={getScoreTitle(lead)}
+                            >
+                              {lbl}
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       <div className="lead-email-col">

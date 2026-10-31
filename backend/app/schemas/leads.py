@@ -35,6 +35,13 @@ class LeadResponse(BaseModel):
 
     lead_status: str
     qualification_status: str
+    total_score: int | None = None
+    website_score: int | None = None
+    business_score: int | None = None
+    opportunity_score: int | None = None
+    contact_score: int | None = None
+    outreach_readiness: str | None = None
+    qualification_reason: str | None = None
 
     notes: str | None = None
 

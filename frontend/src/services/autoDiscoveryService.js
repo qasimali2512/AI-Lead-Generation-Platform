@@ -6,6 +6,11 @@ const autoDiscoveryService = {
     return response.data;
   },
 
+  async getPreview() {
+    const response = await api.get("/auto-discovery/preview");
+    return response.data;
+  },
+
   async updateSettings(payload) {
     const response = await api.put("/auto-discovery", payload);
     return response.data;

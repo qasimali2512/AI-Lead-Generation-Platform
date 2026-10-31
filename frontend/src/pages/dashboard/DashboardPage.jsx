@@ -15,6 +15,7 @@ import {
   Users,
   Wifi,
   WifiOff,
+  Zap,
 } from "lucide-react";
 
 import { useRealtimeDashboard } from "../../hooks/useRealtimeDashboard";
@@ -156,6 +157,13 @@ function DashboardPage() {
       tone:  "maroon",
     },
     {
+      title:       "Run auto-discovery",
+      description: "Launch ongoing lead discovery and auto-campaign setup.",
+      icon:  Zap,
+      path:  "/leads/auto",
+      tone:  "blue",
+    },
+    {
       title:       "Analyze websites",
       description: "Identify real SEO, UX and performance issues.",
       icon:  Globe2,
@@ -163,10 +171,10 @@ function DashboardPage() {
       tone:  "blue",
     },
     {
-      title:       "Create outreach",
-      description: "Generate personalized business emails.",
+      title:       "Create campaign",
+      description: "Build a targeted outreach campaign from your leads.",
       icon:  Mail,
-      path:  "/email/editor",
+      path:  "/campaigns/new",
       tone:  "sage",
     },
   ];

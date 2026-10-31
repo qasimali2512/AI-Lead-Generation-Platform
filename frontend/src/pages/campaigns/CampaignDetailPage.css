@@ -372,16 +372,48 @@
   min-width: 0;
 }
 
-.cd-followup-row > div strong {
+.cd-followup-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cd-followup-info strong {
   display: block;
   color: var(--color-graphite);
   font-size: 12px;
 }
 
-.cd-followup-row > div span {
+.fu-send-after {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: var(--color-muted);
   font-size: 11px;
 }
+
+.fu-window {
+  color: var(--color-graphite-soft);
+  font-size: 11px;
+}
+
+.fu-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+  width: fit-content;
+}
+
+.fu-countdown-pending { color: #92600a; background: #fef3c7; }
+.fu-countdown-today   { color: #065f46; background: #d1fae5; }
+.fu-countdown-done    { color: var(--color-muted); background: rgba(77,71,66,.08); }
+.fu-countdown-neutral { display: none; }
 
 .fu-badge {
   padding: 3px 8px;
@@ -695,6 +727,7 @@
 .email-body-error {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
   margin-top: 12px;
   padding: 9px 12px;
@@ -702,6 +735,31 @@
   color: #c0392b;
   background: rgba(192,57,43,.07);
   font-size: 12px;
+}
+
+.email-body-error--token {
+  color: #7c3908;
+  background: #fef3c7;
+  border: 1px solid #fbbf24;
+}
+
+.email-error-reconnect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #1f6b4f;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.email-error-reconnect-btn:hover {
+  background: #175a40;
 }
 
 /* =========================================================

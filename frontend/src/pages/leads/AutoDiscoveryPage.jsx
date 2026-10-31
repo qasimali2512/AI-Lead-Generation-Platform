@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
+  Info,
   LoaderCircle,
   MapPin,
   Play,
   RotateCcw,
+  SendHorizonal,
   Square,
   X,
   Zap,
@@ -14,6 +16,7 @@ import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 
 import autoDiscoveryService from "../../services/autoDiscoveryService";
+import emailAccountService from "../../services/emailAccountService";
 import "./LeadDiscoveryPage.css";
 import "./AutoDiscoveryPage.css";
 
@@ -39,11 +42,17 @@ const EMPTY_FORM = {
   run_every_minutes: 30,
   city_size: "mix",
   countries: [],
+  // Auto-Campaign
+  auto_campaign_enabled: false,
+  auto_campaign_opportunity_threshold: 30,
+  auto_campaign_daily_limit: 50,
+  auto_campaign_email_account_ids: [],
+  auto_campaign_start_time: "09:00",
+  auto_campaign_end_time: "17:00",
 };
 
-/* ---------- Safe helpers (objects ko JSX mein jane se rokte hain) ---------- */
+/* ---------- Safe helpers ---------- */
 
-// Kisi bhi value ko safe text bana do
 function asText(value) {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") {
@@ -52,20 +61,17 @@ function asText(value) {
   return String(value);
 }
 
-// Aik country item (string ya {code, name}) -> code string
 function toCountryCode(item) {
   if (typeof item === "string") return item;
   if (item && typeof item === "object") return String(item.code || item.name || "");
   return "";
 }
 
-// Saved countries list -> unique code strings
 function normalizeCountries(list) {
   if (!Array.isArray(list)) return [];
   return [...new Set(list.map(toCountryCode).filter(Boolean))];
 }
 
-// Full countries list (dropdown ke liye) -> [{code, name}]
 function normalizeAllCountries(list) {
   const arr = Array.isArray(list)
     ? list
@@ -109,10 +115,13 @@ function AutoDiscoveryPage() {
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [status, setStatus] = useState(null);
+  const [previewStatus, setPreviewStatus] = useState(null);
   const [allCountries, setAllCountries] = useState([]);
+  const [emailAccounts, setEmailAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [showAutoCampaignLeads, setShowAutoCampaignLeads] = useState(false);
   const formLoaded = useRef(false);
 
   const applyServerState = useCallback((data, { updateForm }) => {
@@ -126,6 +135,13 @@ function AutoDiscoveryPage() {
         run_every_minutes: data.run_every_minutes,
         city_size: data.city_size || "mix",
         countries: normalizeCountries(data.countries),
+        // Auto-Campaign
+        auto_campaign_enabled: data.auto_campaign_enabled ?? false,
+        auto_campaign_opportunity_threshold: data.auto_campaign_opportunity_threshold ?? 30,
+        auto_campaign_daily_limit: data.auto_campaign_daily_limit ?? 50,
+        auto_campaign_email_account_ids: data.auto_campaign_email_account_ids ?? [],
+        auto_campaign_start_time: data.auto_campaign_start_time || "09:00",
+        auto_campaign_end_time: data.auto_campaign_end_time || "17:00",
       });
     }
   }, []);
@@ -136,14 +152,24 @@ function AutoDiscoveryPage() {
 
     async function load() {
       try {
-        const [settings, countries] = await Promise.all([
+        const [settings, accounts] = await Promise.all([
           autoDiscoveryService.getSettings(),
-          autoDiscoveryService.getCountries(),
+          emailAccountService.getAccounts({ status: "active" }).catch(() => ({ items: [] })),
         ]);
         if (cancelled) return;
-        setAllCountries(normalizeAllCountries(countries));
+        setEmailAccounts(
+          Array.isArray(accounts?.items) ? accounts.items : []
+        );
         applyServerState(settings, { updateForm: true });
         formLoaded.current = true;
+        autoDiscoveryService
+          .getCountries()
+          .then((countries) => {
+            if (!cancelled) setAllCountries(normalizeAllCountries(countries));
+          })
+          .catch(() => {
+            if (!cancelled) setAllCountries([]);
+          });
       } catch (error) {
         toast.error(getErrorMessage(error));
       } finally {
@@ -176,6 +202,19 @@ function AutoDiscoveryPage() {
     setForm((current) => ({ ...current, [name]: value }));
   }
 
+  async function toggleAutoCampaignLeads() {
+    const nextVisible = !showAutoCampaignLeads;
+    setShowAutoCampaignLeads(nextVisible);
+    if (nextVisible) {
+      try {
+        setPreviewStatus(await autoDiscoveryService.getPreview());
+      } catch (error) {
+        setShowAutoCampaignLeads(false);
+        toast.error(getErrorMessage(error));
+      }
+    }
+  }
+
   function addCountry(code) {
     if (!code) return;
     setForm((current) =>
@@ -192,9 +231,41 @@ function AutoDiscoveryPage() {
     }));
   }
 
+  function addEmailAccount(id) {
+    if (!id) return;
+    setForm((current) =>
+      current.auto_campaign_email_account_ids.includes(id)
+        ? current
+        : {
+            ...current,
+            auto_campaign_email_account_ids: [
+              ...current.auto_campaign_email_account_ids,
+              id,
+            ],
+          },
+    );
+  }
+
+  function removeEmailAccount(id) {
+    setForm((current) => ({
+      ...current,
+      auto_campaign_email_account_ids:
+        current.auto_campaign_email_account_ids.filter((a) => a !== id),
+    }));
+  }
+
   async function save(enabled) {
     if (enabled && !form.industry.trim()) {
       toast.error("Please type an industry first.");
+      return;
+    }
+    if (
+      form.auto_campaign_enabled &&
+      form.auto_campaign_email_account_ids.length === 0
+    ) {
+      toast.error(
+        "Auto-campaign is ON but no email accounts selected. Please select at least one.",
+      );
       return;
     }
 
@@ -285,6 +356,14 @@ function AutoDiscoveryPage() {
   const selectedCodes = new Set(form.countries.map(toCountryCode).filter(Boolean));
   const availableCountries = allCountries.filter(
     (country) => !selectedCodes.has(country.code),
+  );
+
+  const selectedAccountIds = new Set(form.auto_campaign_email_account_ids);
+  const availableAccounts = emailAccounts.filter(
+    (acc) => !selectedAccountIds.has(acc.id),
+  );
+  const selectedAccounts = emailAccounts.filter((acc) =>
+    selectedAccountIds.has(acc.id),
   );
 
   return (
@@ -493,7 +572,253 @@ function AutoDiscoveryPage() {
             )}
           </div>
 
-          <div className="auto-actions">
+          {/* ────────────── Auto-Campaign Section ────────────── */}
+          <div className="auto-campaign-section">
+            <div className="auto-campaign-header">
+              <div className="auto-campaign-header-left">
+                <div className="auto-campaign-icon">
+                  <SendHorizonal size={18} />
+                </div>
+                <div className="auto-campaign-header-text">
+                  <h3>Auto-Campaign</h3>
+                  <p>
+                    Automatically send emails when new leads are found
+                  </p>
+                </div>
+              </div>
+
+              <label className="auto-toggle-wrap" htmlFor="auto-campaign-toggle">
+                <span className="auto-toggle-label">
+                  {form.auto_campaign_enabled ? "ON" : "OFF"}
+                </span>
+                <span className="auto-toggle">
+                  <input
+                    id="auto-campaign-toggle"
+                    type="checkbox"
+                    checked={form.auto_campaign_enabled}
+                    onChange={(e) =>
+                      setField("auto_campaign_enabled", e.target.checked)
+                    }
+                  />
+                  <span className="auto-toggle-track" />
+                </span>
+              </label>
+            </div>
+
+            {form.auto_campaign_enabled ? (
+              <div className="auto-campaign-body">
+
+                {/* Info banner */}
+                <div className="auto-campaign-info">
+                  <Info size={15} />
+                  <span>
+                    Auto-discovery keeps collecting qualified leads from each
+                    run. When the campaign size below is reached, one campaign
+                    is created and started. Discovery pauses until the next day.
+                  </span>
+                </div>
+
+                {/* Score threshold */}
+                <div className="auto-campaign-field">
+                  <label>
+                    Minimum lead score —{" "}
+                    <span className="auto-threshold-value">
+                      {form.auto_campaign_opportunity_threshold}
+                    </span>
+                  </label>
+                  <p className="auto-threshold-hint">
+                    Only leads with a total qualification score ≥{" "}
+                    {form.auto_campaign_opportunity_threshold} are added to
+                    the campaign. Leads below this score are skipped. A lead
+                    also needs an email address.
+                  </p>
+                  <input
+                    type="range"
+                    className="auto-range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={form.auto_campaign_opportunity_threshold}
+                    onChange={(e) =>
+                      setField(
+                        "auto_campaign_opportunity_threshold",
+                        Number(e.target.value),
+                      )
+                    }
+                  />
+                </div>
+
+                {/* Daily limit + time window */}
+                <div className="auto-campaign-row">
+                  <div className="auto-campaign-field">
+                    <label>Campaign size / emails per day</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10000}
+                      value={form.auto_campaign_daily_limit}
+                      onChange={(e) =>
+                        setField(
+                          "auto_campaign_daily_limit",
+                          Math.max(1, Number(e.target.value)),
+                        )
+                      }
+                    />
+                    <p className="auto-threshold-hint">
+                      Qualified leads accumulate across discovery runs. When
+                      this number is reached, one campaign is created with
+                      those leads and sent with a random 5–15 minute delay.
+                    </p>
+                  </div>
+
+                  <div className="auto-campaign-field" />
+                </div>
+
+                <div className="auto-campaign-row">
+                  <div className="auto-campaign-field">
+                    <label>Send window — Start time</label>
+                    <input
+                      type="time"
+                      value={form.auto_campaign_start_time}
+                      onChange={(e) =>
+                        setField("auto_campaign_start_time", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="auto-campaign-field">
+                    <label>Send window — End time</label>
+                    <input
+                      type="time"
+                      value={form.auto_campaign_end_time}
+                      onChange={(e) =>
+                        setField("auto_campaign_end_time", e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* Email accounts */}
+                <div className="auto-campaign-field">
+                  <label>
+                    Send from these email accounts{" "}
+                    <span className="auto-hint">(select one or more)</span>
+                  </label>
+
+                  <select
+                    className="auto-account-select"
+                    value=""
+                    onChange={(e) => addEmailAccount(e.target.value)}
+                    disabled={availableAccounts.length === 0}
+                  >
+                    <option value="">
+                      {emailAccounts.length === 0
+                        ? "No active email accounts found"
+                        : availableAccounts.length === 0
+                          ? "All accounts selected"
+                          : "Add an email account..."}
+                    </option>
+                    {availableAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.display_name
+                          ? `${acc.display_name} <${acc.email}>`
+                          : acc.email}
+                      </option>
+                    ))}
+                  </select>
+
+                  {selectedAccounts.length > 0 && (
+                    <div className="auto-chip-row">
+                      {selectedAccounts.map((acc) => (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          className="auto-chip selected"
+                          onClick={() => removeEmailAccount(acc.id)}
+                          title="Remove"
+                        >
+                          {acc.display_name
+                            ? `${acc.display_name} <${acc.email}>`
+                            : acc.email}
+                          <X size={12} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {emailAccounts.length === 0 && (
+                    <p style={{ fontSize: 12, color: "var(--color-graphite-soft)" }}>
+                      No active email accounts. Add one in{" "}
+                      <button
+                        type="button"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#1f6b4f",
+                          cursor: "pointer",
+                          padding: 0,
+                          font: "inherit",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                        onClick={() => navigate("/email-accounts")}
+                      >
+                        Email Accounts
+                      </button>
+                      .
+                    </p>
+                  )}
+                </div>
+
+                {/* Stats — campaigns created so far */}
+                {status?.auto_campaigns_created > 0 && (
+                  <div className="auto-campaign-stat-row">
+                    <div className="auto-campaign-mini-stat">
+                      <span>Campaigns created</span>
+                      <strong>{status.auto_campaigns_created}</strong>
+                    </div>
+                    {status.auto_campaign_last_created_at && (
+                      <div className="auto-campaign-mini-stat">
+                        <span>Last campaign</span>
+                        <strong>
+                          {new Date(
+                            status.auto_campaign_last_created_at,
+                          ).toLocaleDateString()}
+                        </strong>
+                      </div>
+                    )}
+                    <div className="auto-campaign-mini-stat">
+                      <span>Campaign emails</span>
+                      <strong>
+                        {status.auto_campaign_leads_sent ?? 0}/
+                        {status.auto_campaign_leads_total ?? 0} sent
+                      </strong>
+                      <small>
+                        {status.auto_campaign_leads_left ?? 0} left
+                        {status.auto_campaign_status
+                          ? ` · ${status.auto_campaign_status}`
+                          : ""}
+                      </small>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: "16px 22px",
+                  color: "var(--color-graphite-soft)",
+                  fontSize: 13,
+                }}
+              >
+                Enable to automatically create &amp; send campaigns when new
+                leads are found.
+              </div>
+            )}
+          </div>
+          {/* ────────────── End Auto-Campaign ────────────── */}
+
+          <div className="auto-actions" style={{ marginTop: 20 }}>
             {isOn ? (
               <button
                 type="button"
@@ -542,7 +867,62 @@ function AutoDiscoveryPage() {
               )}
               Run now
             </button>
+            {form.auto_campaign_enabled && (
+              <button
+                type="button"
+                className="auto-secondary"
+                onClick={toggleAutoCampaignLeads}
+              >
+                {showAutoCampaignLeads
+                  ? "Hide auto-campaign leads"
+                  : "View auto-campaign leads"}
+              </button>
+            )}
           </div>
+          {showAutoCampaignLeads && form.auto_campaign_enabled && (
+            <section className="auto-campaign-preview">
+              <div className="auto-campaign-preview-header">
+                <div>
+                  <h4>Today's auto-campaign leads</h4>
+                  <p>
+                    Qualified emails collected so far. The campaign starts
+                    automatically when the target is complete.
+                  </p>
+                </div>
+                <div className="auto-campaign-preview-count">
+                  <strong>
+                    {previewStatus?.auto_campaign_preview_count ?? 0}/
+                    {form.auto_campaign_daily_limit}
+                  </strong>
+                  <span>
+                    {previewStatus?.auto_campaign_preview_remaining ??
+                      form.auto_campaign_daily_limit}{" "}
+                    left
+                  </span>
+                </div>
+              </div>
+              {previewStatus?.auto_campaign_preview_leads?.length ? (
+                <div className="auto-campaign-lead-list">
+                  {previewStatus.auto_campaign_preview_leads.map((lead) => (
+                    <div className="auto-campaign-lead-row" key={lead.id}>
+                      <div>
+                        <strong>{lead.name || "Unnamed business"}</strong>
+                        <span>{lead.email}</span>
+                      </div>
+                      <div className="auto-campaign-lead-meta">
+                        <b>{lead.score} pts</b>
+                        {lead.status && <small>{lead.status}</small>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="auto-campaign-empty">
+                  No qualified email leads collected yet.
+                </p>
+              )}
+            </section>
+          )}
         </section>
 
         <section className="discovery-search-panel auto-status-panel">
@@ -589,6 +969,13 @@ function AutoDiscoveryPage() {
               <span>Last run</span>
               <strong>{formatTime(status?.last_run_at)}</strong>
             </div>
+            {status?.auto_campaigns_created > 0 && (
+              <div className="auto-stat">
+                <span>Auto campaigns sent</span>
+                <strong>{status.auto_campaigns_created}</strong>
+                <small>since setup</small>
+              </div>
+            )}
           </div>
 
           {status?.last_error && (
@@ -604,6 +991,14 @@ function AutoDiscoveryPage() {
               onClick={() => navigate("/leads")}
             >
               View saved leads
+            </button>
+
+            <button
+              type="button"
+              className="auto-secondary"
+              onClick={() => navigate("/campaigns")}
+            >
+              View campaigns
             </button>
 
             <button
