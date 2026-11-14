@@ -26,6 +26,12 @@ class GmailSendError(RuntimeError):
     pass
 
 
+class GmailTokenRevokedError(GmailSendError):
+    """Raised when Google returns invalid_grant — token expired or revoked.
+    The email account must be reconnected by the user."""
+    pass
+
+
 def _encode_message(message: EmailMessage) -> str:
     raw = base64.urlsafe_b64encode(
         message.as_bytes()
@@ -59,6 +65,19 @@ async def refresh_access_token(
             "Google token refresh failed: %s",
             response.text[:500],
         )
+
+        # invalid_grant means the refresh token has been revoked or expired.
+        # This is a permanent error — the user must reconnect the account.
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = {}
+
+        if error_body.get("error") == "invalid_grant":
+            raise GmailTokenRevokedError(
+                "Google refresh token has been revoked or expired. "
+                "Please reconnect your email account."
+            )
 
         raise GmailSendError(
             "Unable to refresh Google access token."
@@ -237,6 +256,27 @@ async def send_queue_email(
             account.token_expires_at = now_utc + timedelta(seconds=expires_in)
             account.updated_at = now_utc
             db.commit()
+
+        except GmailTokenRevokedError:
+            # Token permanently revoked — mark account for reconnection and stop.
+            logger.warning(
+                "Refresh token revoked for account=%s (%s). "
+                "Marking as reauth_required.",
+                account.id,
+                account.email,
+            )
+            account.status = "reauth_required"
+            account.last_error = (
+                "Google refresh token has been revoked or expired. "
+                "Please reconnect this email account."
+            )
+            account.last_error_at = now_utc
+            account.updated_at = now_utc
+            db.commit()
+            raise GmailSendError(
+                f"Email account '{account.email}' needs to be reconnected. "
+                "Please go to Email Accounts and reconnect your Google account."
+            )
 
         except GmailSendError:
             raise

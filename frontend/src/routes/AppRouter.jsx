@@ -33,6 +33,8 @@ const RepliesInboxPage    = lazy(() => import("../pages/replies/RepliesInboxPage
 const AnalyticsPage       = lazy(() => import("../pages/analytics/AnalyticsPage"));
 const SettingsPage        = lazy(() => import("../pages/settings/SettingsPage"));
 const NotFoundPage        = lazy(() => import("../pages/NotFoundPage"));
+const PrivacyPolicyPage   = lazy(() => import("../pages/legal/PrivacyPolicyPage"));
+const TermsPage           = lazy(() => import("../pages/legal/TermsPage"));
 
 // Shown while any lazy page chunk is downloading
 function PageLoader() {
@@ -214,6 +216,10 @@ function AppRouter() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* ── Public legal pages (no login required) ── */}
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms"          element={<TermsPage />} />
+
         <Route element={<PublicRoute />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
