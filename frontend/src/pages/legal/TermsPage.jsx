@@ -26,10 +26,21 @@ function TermsPage() {
 
       {/* ── Hero ────────────────────────────────── */}
       <header className="legal-hero">
+        <div className="legal-hero-grid" />
         <div className="legal-hero-inner">
-          <span className="legal-badge">Legal</span>
+          <span className="legal-badge">Legal · Terms</span>
           <h1>Terms of Service</h1>
-          <p>Last updated: {UPDATED_AT}</p>
+          <p className="legal-hero-sub">
+            By using our platform, you agree to these terms. Please read them carefully —
+            they govern your rights, responsibilities, and our commitment to you.
+          </p>
+          <div className="legal-hero-pills">
+            <span className="legal-hero-pill">📋 Fair Use Policy</span>
+            <span className="legal-hero-pill">⚖️ CAN-SPAM Compliant</span>
+            <span className="legal-hero-pill">🌍 GDPR &amp; CASL</span>
+            <span className="legal-hero-pill">🔑 OAuth 2.0 Integration</span>
+          </div>
+          <p className="legal-hero-date">Last updated: {UPDATED_AT}</p>
         </div>
       </header>
 
@@ -260,11 +271,27 @@ function TermsPage() {
 
       {/* ── Footer ──────────────────────────────── */}
       <footer className="legal-footer">
-        <p>© {new Date().getFullYear()} {COMPANY}. All rights reserved.</p>
-        <div className="legal-footer-links">
-          <Link to="/privacy-policy">Privacy Policy</Link>
-          <Link to="/terms">Terms of Service</Link>
-          <Link to="/login">Sign In</Link>
+        <div className="legal-footer-inner">
+          <div className="legal-footer-brand">
+            <span className="legal-footer-logo">⚡</span>
+            <div>
+              <strong>AI Lead Generation &amp; Business Outreach Platform</strong>
+              <span>by {COMPANY}</span>
+            </div>
+          </div>
+          <p className="legal-footer-desc">
+            Empowering businesses with AI-powered lead discovery and email outreach.
+            Your data is always secure and private.
+          </p>
+          <div className="legal-footer-links">
+            <Link to="/privacy-policy">Privacy Policy</Link>
+            <Link to="/terms">Terms of Service</Link>
+            <Link to="/login">Sign In</Link>
+            <Link to="/register">Register</Link>
+          </div>
+          <p className="legal-footer-copy">
+            © {new Date().getFullYear()} {COMPANY}. All rights reserved.
+          </p>
         </div>
       </footer>
 
