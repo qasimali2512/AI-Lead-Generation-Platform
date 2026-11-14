@@ -35,6 +35,7 @@ const SettingsPage        = lazy(() => import("../pages/settings/SettingsPage"))
 const NotFoundPage        = lazy(() => import("../pages/NotFoundPage"));
 const PrivacyPolicyPage   = lazy(() => import("../pages/legal/PrivacyPolicyPage"));
 const TermsPage           = lazy(() => import("../pages/legal/TermsPage"));
+const HomePage            = lazy(() => import("../pages/home/HomePage"));
 
 // Shown while any lazy page chunk is downloading
 function PageLoader() {
@@ -219,6 +220,17 @@ function AppRouter() {
         {/* ── Public legal pages (no login required) ── */}
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/terms"          element={<TermsPage />} />
+        <Route path="/home"           element={<HomePage />} />
+
+        {/* ── Root: homepage (public) or dashboard (authed) ── */}
+        <Route
+          path="/"
+          element={
+            isAuthenticated
+              ? <Navigate to="/dashboard" replace />
+              : <HomePage />
+          }
+        />
 
         <Route element={<PublicRoute />}>
           <Route path="/login" element={<LoginPage />} />
@@ -227,16 +239,6 @@ function AppRouter() {
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
-            <Route
-              path="/"
-              element={
-                <Navigate
-                  to={isAuthenticated ? "/dashboard" : "/login"}
-                  replace
-                />
-              }
-            />
-
             <Route path="/dashboard" element={<DashboardPage />} />
 
             <Route
