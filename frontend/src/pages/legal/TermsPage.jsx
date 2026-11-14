@@ -24,7 +24,7 @@ function TermsPage() {
         </div>
       </nav>
 
-      {/* ── Hero ────────────────────────────────── */}
+      {/* ── Hero (CTA banner style) ───────────── */}
       <header className="legal-hero">
         <div className="legal-hero-grid" />
         <div className="legal-hero-inner">
@@ -34,15 +34,21 @@ function TermsPage() {
             By using our platform, you agree to these terms. Please read them carefully —
             they govern your rights, responsibilities, and our commitment to you.
           </p>
-          <div className="legal-hero-pills">
-            <span className="legal-hero-pill">📋 Fair Use Policy</span>
-            <span className="legal-hero-pill">⚖️ CAN-SPAM Compliant</span>
-            <span className="legal-hero-pill">🌍 GDPR &amp; CASL</span>
-            <span className="legal-hero-pill">🔑 OAuth 2.0 Integration</span>
+          <div className="legal-hero-actions">
+            <Link to="/register" className="legal-hero-btn-primary">Get Started Free →</Link>
+            <Link to="/login"    className="legal-hero-btn-outline">Sign In to Dashboard</Link>
           </div>
           <p className="legal-hero-date">Last updated: {UPDATED_AT}</p>
         </div>
       </header>
+
+      {/* ── Stats strip (like homepage 10,000+ section) ── */}
+      <div className="legal-stats-strip">
+        <div className="legal-stat"><span className="legal-stat-num">Gmail</span><span className="legal-stat-lbl">OAuth 2.0 Integration</span></div>
+        <div className="legal-stat"><span className="legal-stat-num">CAN-SPAM</span><span className="legal-stat-lbl">Email Law Compliant</span></div>
+        <div className="legal-stat"><span className="legal-stat-num">GDPR</span><span className="legal-stat-lbl">Data Privacy Standard</span></div>
+        <div className="legal-stat"><span className="legal-stat-num">24/7</span><span className="legal-stat-lbl">Platform Availability</span></div>
+      </div>
 
       {/* ── Body ────────────────────────────────── */}
       <main className="legal-body">
@@ -272,26 +278,60 @@ function TermsPage() {
       {/* ── Footer ──────────────────────────────── */}
       <footer className="legal-footer">
         <div className="legal-footer-inner">
-          <div className="legal-footer-brand">
-            <span className="legal-footer-logo">⚡</span>
-            <div>
-              <strong>AI Lead Generation &amp; Business Outreach Platform</strong>
-              <span>by {COMPANY}</span>
+
+          {/* Top row: Brand + columns */}
+          <div className="legal-footer-top">
+
+            {/* Brand column */}
+            <div className="legal-footer-col legal-footer-col--brand">
+              <div className="legal-footer-brand">
+                <span className="legal-footer-logo">⚡</span>
+                <strong>AI Lead Generation &amp; Business Outreach Platform</strong>
+              </div>
+              <p className="legal-footer-tagline">
+                Empowering businesses with AI-powered lead discovery,
+                personalized email outreach, and campaign analytics.
+              </p>
+              <p className="legal-footer-company">by {COMPANY}</p>
+            </div>
+
+            {/* Links column */}
+            <div className="legal-footer-col">
+              <h4>Legal</h4>
+              <ul>
+                <li><Link to="/privacy-policy">Privacy Policy</Link></li>
+                <li><Link to="/terms">Terms of Service</Link></li>
+              </ul>
+            </div>
+
+            {/* Account column */}
+            <div className="legal-footer-col">
+              <h4>Account</h4>
+              <ul>
+                <li><Link to="/login">Sign In</Link></li>
+                <li><Link to="/register">Get Started Free</Link></li>
+              </ul>
+            </div>
+
+            {/* Contact column */}
+            <div className="legal-footer-col">
+              <h4>Contact</h4>
+              <ul>
+                <li><a href="mailto:technologiessoftpeak@gmail.com">technologiessoftpeak<br />@gmail.com</a></li>
+              </ul>
+            </div>
+
+          </div>
+
+          {/* Bottom bar */}
+          <div className="legal-footer-bottom">
+            <p>© {new Date().getFullYear()} {COMPANY}. All rights reserved.</p>
+            <div className="legal-footer-bottom-links">
+              <Link to="/privacy-policy">Privacy</Link>
+              <Link to="/terms">Terms</Link>
             </div>
           </div>
-          <p className="legal-footer-desc">
-            Empowering businesses with AI-powered lead discovery and email outreach.
-            Your data is always secure and private.
-          </p>
-          <div className="legal-footer-links">
-            <Link to="/privacy-policy">Privacy Policy</Link>
-            <Link to="/terms">Terms of Service</Link>
-            <Link to="/login">Sign In</Link>
-            <Link to="/register">Register</Link>
-          </div>
-          <p className="legal-footer-copy">
-            © {new Date().getFullYear()} {COMPANY}. All rights reserved.
-          </p>
+
         </div>
       </footer>
 

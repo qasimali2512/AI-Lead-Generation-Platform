@@ -358,22 +358,59 @@ export default function HomePage() {
       ══════════════════════════════════════════ */}
       <footer className="hp-footer">
         <div className="hp-footer-inner">
-          <div className="hp-footer-brand">
-            <span className="hp-logo-mark">⚡</span>
-            <div>
-              <strong>AI Lead Generation &amp; Business Outreach Platform</strong>
-              <span>by SoftPeak Technologies</span>
+
+          {/* Top: Brand + nav columns */}
+          <div className="hp-footer-top">
+
+            <div className="hp-footer-col hp-footer-col--brand">
+              <div className="hp-footer-brand-row">
+                <span className="hp-logo-mark">⚡</span>
+                <strong>AI Lead Generation &amp; Business Outreach Platform</strong>
+              </div>
+              <p className="hp-footer-tagline">
+                Empowering businesses with AI-powered lead discovery,
+                personalized email outreach, and campaign analytics — all in one platform.
+              </p>
+              <span className="hp-footer-company">by SoftPeak Technologies</span>
+            </div>
+
+            <div className="hp-footer-col">
+              <h4>Platform</h4>
+              <ul>
+                <li><Link to="/dashboard">Dashboard</Link></li>
+                <li><Link to="/leads/discover">Lead Discovery</Link></li>
+                <li><Link to="/campaigns">Campaigns</Link></li>
+                <li><Link to="/email/accounts">Email Accounts</Link></li>
+              </ul>
+            </div>
+
+            <div className="hp-footer-col">
+              <h4>Legal</h4>
+              <ul>
+                <li><Link to="/privacy-policy">Privacy Policy</Link></li>
+                <li><Link to="/terms">Terms of Service</Link></li>
+              </ul>
+            </div>
+
+            <div className="hp-footer-col">
+              <h4>Account</h4>
+              <ul>
+                <li><Link to="/login">Sign In</Link></li>
+                <li><Link to="/register">Get Started Free</Link></li>
+              </ul>
+            </div>
+
+          </div>
+
+          {/* Bottom bar */}
+          <div className="hp-footer-bottom">
+            <p>© {new Date().getFullYear()} SoftPeak Technologies. All rights reserved.</p>
+            <div className="hp-footer-bottom-links">
+              <Link to="/privacy-policy">Privacy</Link>
+              <Link to="/terms">Terms</Link>
             </div>
           </div>
-          <div className="hp-footer-links">
-            <Link to="/privacy-policy">Privacy Policy</Link>
-            <Link to="/terms">Terms of Service</Link>
-            <Link to="/login">Sign In</Link>
-            <Link to="/register">Register</Link>
-          </div>
-          <p className="hp-footer-copy">
-            © {new Date().getFullYear()} SoftPeak Technologies. All rights reserved.
-          </p>
+
         </div>
       </footer>
 
